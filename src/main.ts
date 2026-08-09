@@ -1,4 +1,16 @@
+import { loadConfig } from "./config.js";
+
 function main() {
-    console.log("Log service starting");
+    const config = loadConfig()
+
+    console.log(`Log service configured for port ${config.port}`);
 }
-main();
+
+try {
+    main();
+} catch (error: unknown) {
+    const message =
+        error instanceof Error ? error.message : "Unknown startup error"
+    console.error(`Application startup failed: ${message}`);
+    process.exitCode = 1;
+}
