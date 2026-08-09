@@ -7,10 +7,11 @@ import { registerHealthRoute } from "./routes/health.js";
 import { registerLogsRoute } from "./routes/logs.js";
 
 export function buildServer(
-    pool: Pool
+    pool: Pool,
+    logger: boolean = true,
 ) {
     const server = Fastify({
-        logger: true
+        logger,
     });
 
     registerHealthRoute(server, pool)

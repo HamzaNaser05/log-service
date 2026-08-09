@@ -6,8 +6,10 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "typecheck:test": "tsc -p tsconfig.test.json",
     "build": "tsc",
-    "start": "node --env-file-if-exists=.env dist/main.js"
+    "start": "node --env-file-if-exists=.env dist/main.js",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -15,7 +17,8 @@
   "devDependencies": {
     "@types/node": "^26.2.0",
     "@types/pg": "^8.21.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "fastify": "^5.11.3",
