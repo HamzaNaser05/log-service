@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 
 import { registerHealthRoute } from "./routes/health.js";
+import { registerLogsRoute } from "./routes/logs.js";
 
 export function buildServer(
     pool: Pool
@@ -13,6 +14,7 @@ export function buildServer(
     });
 
     registerHealthRoute(server, pool)
-    
+    registerLogsRoute(server, pool)
+
     return server;
 }
