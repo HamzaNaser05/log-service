@@ -1,0 +1,19 @@
+{
+  "name": "log-service",
+  "version": "1.0.0",
+  "description": "A high-throughput log ingestion and query service built with TypeScript, Fastify, and PostgreSQL.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "start": "node dist/main.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2"
+  }
+}
