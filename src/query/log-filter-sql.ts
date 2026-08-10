@@ -78,26 +78,26 @@ import type {
     }
   
     for (
-      const attributeFilter
-      of filters.attributeFilters
-    ) {
-      const keyParameter =
-        addSqlParameter(
-          values,
-          attributeFilter.key,
+        const attributeFilter
+        of filters.attributeFilters
+      ) {
+        const containmentValue =
+          buildAttributeContainmentValue(
+            attributeFilter.key,
+            attributeFilter.value,
+          );
+      
+        const parameter =
+          addSqlParameter(
+            values,
+            containmentValue,
+          );
+      
+        conditions.push(
+          `attributes_normalized @> ${parameter}::jsonb`,
         );
-  
-      const valueParameter =
-        addSqlParameter(
-          values,
-          attributeFilter.value,
-        );
-  
-      conditions.push(
-        `attributes ->> ${keyParameter}::text = ${valueParameter}::text`,
-      );
-    }
-  
+      }
+      
     if (filters.q !== null) {
       const escapedSearch =
         escapeLikeLiteral(filters.q);
@@ -112,4 +112,25 @@ import type {
         `message ILIKE ${patternParameter} ESCAPE '!'`,
       );
     }
+  }
+
+  function buildAttributeContainmentValue(
+    key: string,
+    value: string,
+  ): string {
+    const filter:
+      Record<string, string> = {};
+  
+    Object.defineProperty(
+      filter,
+      key,
+      {
+        value,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      },
+    );
+  
+    return JSON.stringify(filter);
   }

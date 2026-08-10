@@ -224,5 +224,90 @@ import type {
           );
         },
       );
+
+      test(
+        "queries string number and boolean attributes through normalized JSONB",
+        async () => {
+          const testPool =
+            getPool();
+      
+          await insertLogs(
+            testPool,
+            [
+              {
+                timestamp:
+                  "2026-08-09T12:00:00Z",
+      
+                level: "info",
+      
+                service:
+                  "normalized-test",
+      
+                message:
+                  "attribute test",
+      
+                attributes: {
+                  user_id: "42",
+                  retries: 3,
+                  premium: true,
+                },
+              },
+            ],
+          );
+      
+          const query =
+            buildLogSelectQuery({
+              service:
+                "normalized-test",
+      
+              level: null,
+      
+              since: null,
+              until: null,
+      
+              attributeFilters: [
+                {
+                  key: "user_id",
+                  value: "42",
+                },
+                {
+                  key: "retries",
+                  value: "3",
+                },
+                {
+                  key: "premium",
+                  value: "true",
+                },
+              ],
+      
+              q: null,
+      
+              limit: 100,
+      
+              cursor: null,
+            });
+      
+          const result =
+            await testPool.query<{
+              attributes: unknown;
+            }>(
+              query.text,
+              query.values,
+            );
+      
+          expect(
+            result.rowCount,
+          ).toBe(1);
+      
+          expect(
+            result.rows[0]
+              ?.attributes,
+          ).toEqual({
+            user_id: "42",
+            retries: 3,
+            premium: true,
+          });
+        },
+      );
     },
   );
