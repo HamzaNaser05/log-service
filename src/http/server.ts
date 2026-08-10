@@ -5,6 +5,9 @@ import type { Pool } from "pg";
 
 import { registerHealthRoute } from "./routes/health.js";
 import { registerLogsRoute } from "./routes/logs.js";
+import {
+    registerLogAggregateRoute,
+} from "./routes/log-aggregate.js";
 
 export function buildServer(
     pool: Pool,
@@ -16,6 +19,7 @@ export function buildServer(
 
     registerHealthRoute(server, pool)
     registerLogsRoute(server, pool)
+    registerLogAggregateRoute(server, pool);
 
     return server;
 }
