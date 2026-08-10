@@ -10,6 +10,18 @@ import { insertLogs } from "../../persistence/log-repository.js";
 import { validateLogBatch } from "../../validation/log-entry.js";
 import { parseLogBatchRequest } from "../../validation/log-request.js";
 
+import {
+    queryLogs,
+  } from "../../persistence/log-query-repository.js";
+  
+  import {
+    decodeLogCursor,
+  } from "../../query/log-cursor.js";
+  
+  import {
+    parseLogQueryParams,
+  } from "../../validation/log-query.js";
+
 export function registerLogsRoute(
     server: FastifyInstance,
     pool: Pool,
@@ -66,4 +78,74 @@ export function registerLogsRoute(
             }
         }
     )
+
+    server.get(
+        "/logs",
+        async (request, reply) => {
+          const requestUrl = new URL(
+            request.url,
+            "http://localhost",
+          );
+      
+          const queryResult =
+            parseLogQueryParams(
+              requestUrl.searchParams,
+            );
+      
+          if (!queryResult.ok) {
+            return reply.code(400).send({
+              error: queryResult.reason,
+            });
+          }
+      
+          const filters =
+            queryResult.value;
+      
+          let decodedCursor = null;
+      
+          if (filters.cursor !== null) {
+            const cursorResult =
+              decodeLogCursor(
+                filters.cursor,
+              );
+      
+            if (!cursorResult.ok) {
+              return reply.code(400).send({
+                error: "invalid cursor",
+              });
+            }
+      
+            decodedCursor =
+              cursorResult.value;
+          }
+      
+          try {
+            const result =
+              await queryLogs(
+                pool,
+                filters,
+                decodedCursor,
+              );
+      
+            return reply.code(200).send({
+              logs: result.logs,
+      
+              next_cursor:
+                result.nextCursor,
+            });
+          } catch (error: unknown) {
+            request.log.error(
+              {
+                err: error,
+              },
+              "Log query failed",
+            );
+      
+            return reply.code(503).send({
+              error:
+                "log query unavailable",
+            });
+          }
+        },
+      );
 }
