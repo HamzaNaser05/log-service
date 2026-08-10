@@ -1,0 +1,248 @@
+import {
+    describe,
+    expect,
+    test,
+  } from "vitest";
+  
+  import type {
+    LogQueryFilters,
+  } from "../../src/domain/log-query.js";
+  
+  import {
+    buildLogSelectQuery,
+  } from "../../src/query/log-select-query.js";
+  
+  function createFilters(
+    overrides:
+      Partial<LogQueryFilters> = {},
+  ): LogQueryFilters {
+    return {
+      service: null,
+      level: null,
+      since: null,
+      until: null,
+      attributeFilters: [],
+      q: null,
+      limit: 100,
+      cursor: null,
+      ...overrides,
+    };
+  }
+  
+  describe(
+    "buildLogSelectQuery",
+    () => {
+      test(
+        "builds the default query",
+        () => {
+          const query =
+            buildLogSelectQuery(
+              createFilters(),
+            );
+  
+          expect(query.text).toContain(
+            "FROM logs",
+          );
+  
+          expect(query.text).not.toContain(
+            "WHERE",
+          );
+  
+          expect(query.text).toContain(
+            "ORDER BY timestamp DESC, id DESC",
+          );
+  
+          expect(query.text).toContain(
+            "LIMIT $1",
+          );
+  
+          expect(query.values).toEqual([
+            100,
+          ]);
+        },
+      );
+  
+      test(
+        "builds freely combined filters",
+        () => {
+          const query =
+            buildLogSelectQuery(
+              createFilters({
+                service: "checkout",
+                level: "error",
+  
+                since:
+                  "2026-08-09T00:00:00Z",
+  
+                until:
+                  "2026-08-10T00:00:00Z",
+  
+                attributeFilters: [
+                  {
+                    key: "region",
+                    value: "eu-west",
+                  },
+                  {
+                    key: "retries",
+                    value: "3",
+                  },
+                ],
+  
+                q: "payment declined",
+  
+                limit: 250,
+              }),
+            );
+  
+          expect(query.text).toContain(
+            "service = $1",
+          );
+  
+          expect(query.text).toContain(
+            "level = $2",
+          );
+  
+          expect(query.text).toContain(
+            "timestamp >= $3::timestamptz",
+          );
+  
+          expect(query.text).toContain(
+            "timestamp < $4::timestamptz",
+          );
+  
+          expect(query.text).toContain(
+            "attributes ->> $5::text = $6::text",
+          );
+  
+          expect(query.text).toContain(
+            "attributes ->> $7::text = $8::text",
+          );
+  
+          expect(query.text).toContain(
+            "message ILIKE $9 ESCAPE '!'",
+          );
+  
+          expect(query.text).toContain(
+            "LIMIT $10",
+          );
+  
+          expect(query.values).toEqual([
+            "checkout",
+            "error",
+            "2026-08-09T00:00:00Z",
+            "2026-08-10T00:00:00Z",
+            "region",
+            "eu-west",
+            "retries",
+            "3",
+            "%payment declined%",
+            250,
+          ]);
+        },
+      );
+  
+      test(
+        "keeps SQL-injection-shaped service values out of SQL text",
+        () => {
+          const maliciousValue =
+            "checkout' OR TRUE --";
+  
+          const query =
+            buildLogSelectQuery(
+              createFilters({
+                service: maliciousValue,
+              }),
+            );
+  
+          expect(query.text).toContain(
+            "service = $1",
+          );
+  
+          expect(query.text).not.toContain(
+            maliciousValue,
+          );
+  
+          expect(query.values).toEqual([
+            maliciousValue,
+            100,
+          ]);
+        },
+      );
+  
+      test(
+        "parameterizes attribute keys and values",
+        () => {
+          const maliciousKey =
+            "region') = 'x' OR TRUE --";
+  
+          const maliciousValue =
+            "eu-west' OR TRUE --";
+  
+          const query =
+            buildLogSelectQuery(
+              createFilters({
+                attributeFilters: [
+                  {
+                    key: maliciousKey,
+                    value: maliciousValue,
+                  },
+                ],
+              }),
+            );
+  
+          expect(query.text).not.toContain(
+            maliciousKey,
+          );
+  
+          expect(query.text).not.toContain(
+            maliciousValue,
+          );
+  
+          expect(query.values).toEqual([
+            maliciousKey,
+            maliciousValue,
+            100,
+          ]);
+        },
+      );
+  
+      test(
+        "escapes LIKE wildcard characters while preserving backslashes",
+        () => {
+          const search =
+            String.raw`100%_!\match`;
+  
+          const query =
+            buildLogSelectQuery(
+              createFilters({
+                q: search,
+              }),
+            );
+  
+          expect(query.text).toContain(
+            "message ILIKE $1 ESCAPE '!'",
+          );
+  
+          expect(query.values).toEqual([
+            String.raw`%100!%!_!!\match%`,
+            100,
+          ]);
+        },
+      );
+  
+      test(
+        "refuses to silently ignore an opaque cursor",
+        () => {
+          expect(() =>
+            buildLogSelectQuery(
+              createFilters({
+                cursor: "opaque-token",
+              }),
+            ),
+          ).toThrow(
+            "cursor must be decoded before building the log query",
+          );
+        },
+      );
+    },
+  );
