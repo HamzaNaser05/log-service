@@ -1,14 +1,22 @@
 export type AppConfig = {
     port: number;
+  
     databaseUrl: string;
+  
     retentionDays: number;
+  
     partitionAheadDays: number;
+  
+    ingestionMaxInFlight: number;
+  
+    ingestionRetryAfterSeconds: number;
   };
   
   function requireEnv(
     name: string,
   ): string {
-    const value = process.env[name];
+    const value =
+      process.env[name];
   
     if (
       value === undefined ||
@@ -25,7 +33,8 @@ export type AppConfig = {
   function parsePort(
     value: string,
   ): number {
-    const port = Number(value);
+    const port =
+      Number(value);
   
     if (
       !Number.isInteger(port) ||
@@ -52,7 +61,8 @@ export type AppConfig = {
       );
     }
   
-    const parsed = Number(value);
+    const parsed =
+      Number(value);
   
     if (
       !Number.isSafeInteger(parsed) ||
@@ -70,7 +80,9 @@ export type AppConfig = {
   export function loadConfig(): AppConfig {
     return {
       port: parsePort(
-        requireEnv("PORT"),
+        requireEnv(
+          "PORT",
+        ),
       ),
   
       databaseUrl:
@@ -81,9 +93,11 @@ export type AppConfig = {
       retentionDays:
         parseIntegerInRange(
           "RETENTION_DAYS",
+  
           requireEnv(
             "RETENTION_DAYS",
           ),
+  
           1,
           3650,
         ),
@@ -91,11 +105,37 @@ export type AppConfig = {
       partitionAheadDays:
         parseIntegerInRange(
           "PARTITION_AHEAD_DAYS",
+  
           requireEnv(
             "PARTITION_AHEAD_DAYS",
           ),
+  
           1,
           31,
+        ),
+  
+      ingestionMaxInFlight:
+        parseIntegerInRange(
+          "INGESTION_MAX_IN_FLIGHT",
+  
+          requireEnv(
+            "INGESTION_MAX_IN_FLIGHT",
+          ),
+  
+          1,
+          1024,
+        ),
+  
+      ingestionRetryAfterSeconds:
+        parseIntegerInRange(
+          "INGESTION_RETRY_AFTER_SECONDS",
+  
+          requireEnv(
+            "INGESTION_RETRY_AFTER_SECONDS",
+          ),
+  
+          1,
+          3600,
         ),
     };
   }
