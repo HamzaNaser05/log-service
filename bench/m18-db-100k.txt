@@ -1,0 +1,134 @@
+Timing is on.
+ANALYZE
+Time: 562.126 ms
+ total_logs 
+------------
+     123900
+(1 row)
+
+Time: 9.471 ms
+ database_size 
+---------------
+ 59 MB
+(1 row)
+
+Time: 0.693 ms
+ table_size | indexes_size | total_relation_size 
+------------+--------------+---------------------
+ 32 MB      | 19 MB        | 51 MB
+(1 row)
+
+Time: 2.136 ms
+    partition    |                index_name                 | index_size 
+-----------------+-------------------------------------------+------------
+ logs_2026_08_14 | logs_2026_08_14_service_timestamp_id_idx  | 8000 kB
+ logs_2026_08_14 | logs_2026_08_14_pkey                      | 6616 kB
+ logs_2026_08_14 | logs_2026_08_14_attributes_normalized_idx | 4480 kB
+ logs_2026_08_11 | logs_2026_08_11_attributes_normalized_idx | 16 kB
+ logs_2026_08_07 | logs_2026_08_07_attributes_normalized_idx | 16 kB
+ logs_2026_08_15 | logs_2026_08_15_attributes_normalized_idx | 16 kB
+ logs_2026_08_10 | logs_2026_08_10_attributes_normalized_idx | 16 kB
+ logs_2026_08_12 | logs_2026_08_12_attributes_normalized_idx | 16 kB
+ logs_2026_08_08 | logs_2026_08_08_attributes_normalized_idx | 16 kB
+ logs_2026_08_16 | logs_2026_08_16_attributes_normalized_idx | 16 kB
+ logs_2026_08_09 | logs_2026_08_09_attributes_normalized_idx | 16 kB
+ logs_2026_08_13 | logs_2026_08_13_attributes_normalized_idx | 16 kB
+ logs_2026_08_13 | logs_2026_08_13_pkey                      | 8192 bytes
+ logs_2026_08_13 | logs_2026_08_13_service_timestamp_id_idx  | 8192 bytes
+ logs_2026_08_15 | logs_2026_08_15_pkey                      | 8192 bytes
+ logs_2026_08_15 | logs_2026_08_15_service_timestamp_id_idx  | 8192 bytes
+ logs_2026_08_16 | logs_2026_08_16_pkey                      | 8192 bytes
+ logs_2026_08_16 | logs_2026_08_16_service_timestamp_id_idx  | 8192 bytes
+ logs_2026_08_12 | logs_2026_08_12_pkey                      | 8192 bytes
+ logs_2026_08_09 | logs_2026_08_09_service_timestamp_id_idx  | 8192 bytes
+ logs_2026_08_07 | logs_2026_08_07_pkey                      | 8192 bytes
+ logs_2026_08_07 | logs_2026_08_07_service_timestamp_id_idx  | 8192 bytes
+ logs_2026_08_08 | logs_2026_08_08_pkey                      | 8192 bytes
+ logs_2026_08_08 | logs_2026_08_08_service_timestamp_id_idx  | 8192 bytes
+ logs_2026_08_10 | logs_2026_08_10_pkey                      | 8192 bytes
+ logs_2026_08_10 | logs_2026_08_10_service_timestamp_id_idx  | 8192 bytes
+ logs_2026_08_11 | logs_2026_08_11_pkey                      | 8192 bytes
+ logs_2026_08_11 | logs_2026_08_11_service_timestamp_id_idx  | 8192 bytes
+ logs_2026_08_09 | logs_2026_08_09_pkey                      | 8192 bytes
+ logs_2026_08_12 | logs_2026_08_12_service_timestamp_id_idx  | 8192 bytes
+(30 rows)
+
+Time: 1.823 ms
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1.59..72.59 rows=100 width=146) (actual time=0.025..0.126 rows=100 loops=1)
+   Buffers: shared hit=108
+   ->  Append  (cost=1.59..17676.92 rows=24896 width=146) (actual time=0.024..0.117 rows=100 loops=1)
+         Buffers: shared hit=108
+         Subplans Removed: 7
+         ->  Index Scan using logs_2026_08_16_service_timestamp_id_idx on logs_2026_08_16 logs_3  (cost=0.13..8.15 rows=1 width=144) (actual time=0.005..0.005 rows=0 loops=1)
+               Index Cond: ((service = 'checkout'::text) AND ("timestamp" >= (now() - '02:00:00'::interval)))
+               Buffers: shared hit=2
+         ->  Index Scan using logs_2026_08_15_service_timestamp_id_idx on logs_2026_08_15 logs_2  (cost=0.13..8.15 rows=1 width=144) (actual time=0.002..0.002 rows=0 loops=1)
+               Index Cond: ((service = 'checkout'::text) AND ("timestamp" >= (now() - '02:00:00'::interval)))
+               Buffers: shared hit=2
+         ->  Index Scan using logs_2026_08_14_service_timestamp_id_idx on logs_2026_08_14 logs_1  (cost=0.42..17479.19 rows=24887 width=146) (actual time=0.017..0.102 rows=100 loops=1)
+               Index Cond: ((service = 'checkout'::text) AND ("timestamp" >= (now() - '02:00:00'::interval)))
+               Buffers: shared hit=104
+ Planning:
+   Buffers: shared hit=137
+ Planning Time: 0.556 ms
+ Execution Time: 0.176 ms
+(18 rows)
+
+Time: 1.045 ms
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1.59..38.15 rows=100 width=23) (actual time=0.012..0.129 rows=100 loops=1)
+   Buffers: shared hit=187
+   ->  Append  (cost=1.59..22689.14 rows=62054 width=23) (actual time=0.011..0.123 rows=100 loops=1)
+         Buffers: shared hit=187
+         Subplans Removed: 7
+         ->  Index Scan Backward using logs_2026_08_16_pkey on logs_2026_08_16 logs_3  (cost=0.13..8.15 rows=1 width=48) (actual time=0.002..0.002 rows=0 loops=1)
+               Index Cond: ("timestamp" >= (now() - '02:00:00'::interval))
+               Filter: (attributes_normalized @> '{"region": "eu-west"}'::jsonb)
+               Buffers: shared hit=2
+         ->  Index Scan Backward using logs_2026_08_15_pkey on logs_2026_08_15 logs_2  (cost=0.13..8.15 rows=1 width=48) (actual time=0.001..0.001 rows=0 loops=1)
+               Index Cond: ("timestamp" >= (now() - '02:00:00'::interval))
+               Filter: (attributes_normalized @> '{"region": "eu-west"}'::jsonb)
+               Buffers: shared hit=2
+         ->  Index Scan Backward using logs_2026_08_14_pkey on logs_2026_08_14 logs_1  (cost=0.42..22305.54 rows=62045 width=23) (actual time=0.008..0.113 rows=100 loops=1)
+               Index Cond: ("timestamp" >= (now() - '02:00:00'::interval))
+               Filter: (attributes_normalized @> '{"region": "eu-west"}'::jsonb)
+               Rows Removed by Filter: 80
+               Buffers: shared hit=183
+ Planning:
+   Buffers: shared hit=62
+ Planning Time: 0.481 ms
+ Execution Time: 0.147 ms
+(22 rows)
+
+Time: 0.827 ms
+                                                                                              QUERY PLAN                                                                                               
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=9024.60..9055.57 rows=12391 width=23) (actual time=46.772..46.776 rows=65 loops=1)
+   Sort Key: (date_bin('00:05:00'::interval, logs."timestamp", '1970-01-01 00:00:00+00'::timestamp with time zone)), logs.service
+   Sort Method: quicksort  Memory: 28kB
+   Buffers: shared hit=995
+   ->  HashAggregate  (cost=8027.31..8182.19 rows=12391 width=23) (actual time=46.718..46.751 rows=65 loops=1)
+         Group Key: (date_bin('00:05:00'::interval, logs."timestamp", '1970-01-01 00:00:00+00'::timestamp with time zone)), logs.service
+         Batches: 1  Memory Usage: 409kB
+         Buffers: shared hit=995
+         ->  Append  (cost=0.00..7097.99 rows=123909 width=15) (actual time=0.009..20.287 rows=123900 loops=1)
+               Buffers: shared hit=995
+               Subplans Removed: 7
+               ->  Index Only Scan using logs_2026_08_14_service_timestamp_id_idx on logs_2026_08_14 logs_1  (cost=0.42..6478.42 rows=123900 width=15) (actual time=0.009..13.619 rows=123900 loops=1)
+                     Index Cond: ("timestamp" >= (now() - '02:00:00'::interval))
+                     Heap Fetches: 0
+                     Buffers: shared hit=995
+               ->  Seq Scan on logs_2026_08_15 logs_2  (cost=0.00..0.00 rows=1 width=15) (actual time=0.012..0.012 rows=0 loops=1)
+                     Filter: ("timestamp" >= (now() - '02:00:00'::interval))
+               ->  Seq Scan on logs_2026_08_16 logs_3  (cost=0.00..0.00 rows=1 width=15) (actual time=0.001..0.002 rows=0 loops=1)
+                     Filter: ("timestamp" >= (now() - '02:00:00'::interval))
+ Planning:
+   Buffers: shared hit=30
+ Planning Time: 0.322 ms
+ Execution Time: 46.815 ms
+(23 rows)
+
+Time: 47.448 ms

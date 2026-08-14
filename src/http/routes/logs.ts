@@ -7,16 +7,13 @@ import type {
 } from "pg";
 
 import type {
-  IngestionAdmissionController,
-} from "../../ingestion/admission-controller.js";
+  LogIngestionQueue,
+} from "../../ingestion/log-ingestion-queue.js";
 
 import {
   queryLogs,
 } from "../../persistence/log-query-repository.js";
 
-import {
-  insertLogs,
-} from "../../persistence/log-repository.js";
 
 import {
   decodeLogCursor,
@@ -41,8 +38,8 @@ import {
 export function registerLogsRoute(
   server: FastifyInstance,
   pool: Pool,
-  ingestionAdmission:
-    IngestionAdmissionController,
+  ingestionQueue:
+    LogIngestionQueue,
 ): void {
   server.post(
     "/logs",
@@ -101,34 +98,45 @@ export function registerLogsRoute(
        * Only valid batches compete
        * for an ingestion permit.
        */
-      const permit =
-        ingestionAdmission
-          .tryAcquire();
-
-      if (permit === null) {
-        reply.header(
-          "Retry-After",
-
-          String(
-            ingestionAdmission
-              .retryAfterSeconds,
-          ),
+      const enqueueResult =
+        ingestionQueue.enqueue(
+          logsToInsert,
         );
+
+      if (!enqueueResult.ok) {
+        if (
+          enqueueResult.reason ===
+          "full"
+        ) {
+          reply.header(
+            "Retry-After",
+
+            String(
+              ingestionQueue
+                .retryAfterSeconds,
+            ),
+          );
+
+          return reply
+            .code(503)
+            .send({
+              error:
+                "log ingestion busy",
+            });
+        }
 
         return reply
           .code(503)
           .send({
             error:
-              "log ingestion busy",
+              "log ingestion unavailable",
           });
       }
 
       try {
         const acceptedCount =
-          await insertLogs(
-            pool,
-            logsToInsert,
-          );
+          await enqueueResult
+            .completion;
 
         return reply
           .code(200)
@@ -141,7 +149,7 @@ export function registerLogsRoute(
                 .rejected,
           });
       } catch (
-        error: unknown
+      error: unknown
       ) {
         request.log.error(
           {
@@ -160,8 +168,6 @@ export function registerLogsRoute(
             error:
               "log ingestion unavailable",
           });
-      } finally {
-        permit.release();
       }
     },
   );
@@ -237,7 +243,7 @@ export function registerLogsRoute(
               result.nextCursor,
           });
       } catch (
-        error: unknown
+      error: unknown
       ) {
         request.log.error(
           {

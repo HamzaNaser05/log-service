@@ -14,11 +14,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U log_service -d log_service"
-        ]
+      test: [ "CMD-SHELL", "pg_isready -U log_service -d log_service" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -34,20 +30,19 @@ services:
     environment:
       PORT: "8080"
 
-      DATABASE_URL:
-        "postgresql://log_service:log_service@postgres:5432/log_service"
+      DATABASE_URL: "postgresql://log_service:log_service@postgres:5432/log_service"
 
-      RETENTION_DAYS:
-        "${RETENTION_DAYS:-7}"
+      RETENTION_DAYS: "${RETENTION_DAYS:-7}"
 
-      PARTITION_AHEAD_DAYS:
-        "${PARTITION_AHEAD_DAYS:-2}"
+      PARTITION_AHEAD_DAYS: "${PARTITION_AHEAD_DAYS:-2}"
 
-      INGESTION_MAX_IN_FLIGHT:
-        "${INGESTION_MAX_IN_FLIGHT:-4}"
+      INGESTION_QUEUE_MAX_LOGS: "${INGESTION_QUEUE_MAX_LOGS:-10000}"
 
-      INGESTION_RETRY_AFTER_SECONDS:
-        "${INGESTION_RETRY_AFTER_SECONDS:-1}"
+      INGESTION_MICROBATCH_MAX_LOGS: "${INGESTION_MICROBATCH_MAX_LOGS:-1000}"
+
+      INGESTION_MICROBATCH_MAX_WAIT_MS: "${INGESTION_MICROBATCH_MAX_WAIT_MS:-5}"
+
+      INGESTION_RETRY_AFTER_SECONDS: "${INGESTION_RETRY_AFTER_SECONDS:-1}"
 
     ports:
       - "8080:8080"
@@ -61,17 +56,10 @@ services:
     memswap_limit: 256m
 
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://localhost:8080/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
-        ]
+      test: [ "CMD", "node", "-e", "fetch('http://localhost:8080/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))" ]
       interval: 5s
       timeout: 5s
       retries: 10
-
 
 volumes:
   postgres_data:

@@ -9,8 +9,12 @@ import type {
 } from "pg";
 
 import {
-  IngestionAdmissionController,
-} from "../ingestion/admission-controller.js";
+  BinaryCopyLogWriter,
+} from "../ingestion/binary-copy-writer.js";
+
+import {
+  LogIngestionQueue,
+} from "../ingestion/log-ingestion-queue.js";
 
 import {
   registerHealthRoute,
@@ -29,25 +33,37 @@ export function buildServer(
 
   logger: boolean = true,
 
-  ingestionAdmission:
-    IngestionAdmissionController =
-      new IngestionAdmissionController(
-        4,
-        1,
-      ),
+  ingestionQueue?:
+    LogIngestionQueue,
 ): FastifyInstance {
   const server =
     Fastify({
       logger,
-
-      /*
-       * Fastify's default behavior
-       * during close is already to
-       * reject newly arriving
-       * requests with HTTP 503.
-       */
-      return503OnClosing: true,
+      return503OnClosing:
+        true,
     });
+
+  const effectiveIngestionQueue =
+    ingestionQueue ??
+    new LogIngestionQueue(
+      new BinaryCopyLogWriter(
+        pool,
+      ),
+
+      {
+        maxBufferedLogs:
+          10_000,
+
+        maxMicrobatchLogs:
+          1_000,
+
+        maxWaitMilliseconds:
+          5,
+
+        retryAfterSeconds:
+          1,
+      },
+    );
 
   registerHealthRoute(
     server,
@@ -57,12 +73,21 @@ export function buildServer(
   registerLogsRoute(
     server,
     pool,
-    ingestionAdmission,
+    effectiveIngestionQueue,
   );
 
   registerLogAggregateRoute(
     server,
     pool,
+  );
+
+  server.addHook(
+    "onClose",
+
+    async () => {
+      await effectiveIngestionQueue
+        .close();
+    },
   );
 
   return server;
