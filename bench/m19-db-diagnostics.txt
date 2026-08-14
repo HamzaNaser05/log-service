@@ -1,0 +1,105 @@
+Timing is on.
+        name        | setting | unit 
+--------------------+---------+------
+ fsync              | on      | 
+ full_page_writes   | on      | 
+ synchronous_commit | on      | 
+(3 rows)
+
+Time: 9.736 ms
+          name          | setting | unit 
+------------------------+---------+------
+ checkpoint_timeout     | 300     | s
+ effective_cache_size   | 524288  | 8kB
+ gin_pending_list_limit | 4096    | kB
+ maintenance_work_mem   | 65536   | kB
+ max_wal_size           | 1024    | MB
+ shared_buffers         | 16384   | 8kB
+ work_mem               | 4096    | kB
+(7 rows)
+
+Time: 0.798 ms
+   datname   | numbackends | xact_commit | xact_rollback | blks_read | blks_hit | buffer_hit_percent | temp_files | temp_data | deadlocks 
+-------------+-------------+-------------+---------------+-----------+----------+--------------------+------------+-----------+-----------
+ log_service |           3 |       20741 |             4 |      2893 | 25769663 |              99.99 |        663 | 2455 MB   |         0
+(1 row)
+
+Time: 1.794 ms
+ wal_records | wal_fpi | wal_generated | wal_buffers_full | wal_write | wal_sync 
+-------------+---------+---------------+------------------+-----------+----------
+     3432867 |   53842 | 892 MB        |             1160 |      6139 |     4082
+(1 row)
+
+Time: 0.509 ms
+     relname     | seq_scan | seq_tup_read | idx_scan | idx_tup_fetch | n_tup_ins | n_live_tup | n_dead_tup | last_vacuum |        last_autovacuum        |         last_analyze          |       last_autoanalyze        
+-----------------+----------+--------------+----------+---------------+-----------+------------+------------+-------------+-------------------------------+-------------------------------+-------------------------------
+ logs_2026_08_07 |     1591 |            0 |     1654 |             0 |         0 |          0 |          0 |             |                               | 2026-08-14 22:42:17.970897+00 | 
+ logs_2026_08_08 |     1586 |            0 |     1654 |             0 |         0 |          0 |          0 |             |                               | 2026-08-14 22:42:17.971013+00 | 
+ logs_2026_08_09 |     1595 |           15 |     1655 |             0 |         6 |          0 |          0 |             |                               | 2026-08-14 22:42:17.97073+00  | 
+ logs_2026_08_10 |     1586 |            0 |     1654 |             0 |         0 |          0 |          0 |             |                               | 2026-08-14 22:42:17.971113+00 | 
+ logs_2026_08_11 |      514 |     30326800 |     3270 |      31309049 |    140001 |          0 |          0 |             | 2026-08-11 17:42:13.389198+00 | 2026-08-14 22:42:17.971207+00 | 2026-08-11 17:42:14.375984+00
+ logs_2026_08_12 |     1589 |            0 |     1660 |             0 |         0 |          0 |          0 |             |                               | 2026-08-14 22:42:17.971319+00 | 
+ logs_2026_08_13 |     1589 |            0 |     1660 |             0 |         0 |          0 |          0 |             |                               | 2026-08-14 22:42:17.971447+00 | 
+ logs_2026_08_14 |     3125 |    181769200 |     5123 |     191521472 |    863900 |     120000 |          0 |             | 2026-08-14 23:25:50.01677+00  | 2026-08-14 22:42:18.219253+00 | 2026-08-14 23:25:55.306915+00
+ logs_2026_08_15 |     1217 |            0 |     1553 |             0 |         0 |          0 |          0 |             |                               | 2026-08-14 22:42:18.222209+00 | 
+ logs_2026_08_16 |     1217 |            0 |     1553 |             0 |         0 |          0 |          0 |             |                               | 2026-08-14 22:42:18.222296+00 | 
+(10 rows)
+
+Time: 12.834 ms
+    partition    |                index_name                 | index_type | idx_scan | idx_tup_read | idx_tup_fetch | index_size 
+-----------------+-------------------------------------------+------------+----------+--------------+---------------+------------
+ logs_2026_08_14 | logs_2026_08_14_service_timestamp_id_idx  | btree      |      320 |      4692741 |           200 | 7984 kB
+ logs_2026_08_14 | logs_2026_08_14_pkey                      | btree      |     3002 |      1609687 |          2192 | 6376 kB
+ logs_2026_08_14 | logs_2026_08_14_attributes_normalized_idx | gin        |     1801 |    185520353 |             0 | 4768 kB
+ logs_2026_08_11 | logs_2026_08_11_attributes_normalized_idx | gin        |     2619 |     29709550 |             0 | 16 kB
+ logs_2026_08_07 | logs_2026_08_07_attributes_normalized_idx | gin        |        0 |            0 |             0 | 16 kB
+ logs_2026_08_15 | logs_2026_08_15_attributes_normalized_idx | gin        |        0 |            0 |             0 | 16 kB
+ logs_2026_08_10 | logs_2026_08_10_attributes_normalized_idx | gin        |        0 |            0 |             0 | 16 kB
+ logs_2026_08_12 | logs_2026_08_12_attributes_normalized_idx | gin        |        0 |            0 |             0 | 16 kB
+ logs_2026_08_08 | logs_2026_08_08_attributes_normalized_idx | gin        |        0 |            0 |             0 | 16 kB
+ logs_2026_08_16 | logs_2026_08_16_attributes_normalized_idx | gin        |        0 |            0 |             0 | 16 kB
+ logs_2026_08_09 | logs_2026_08_09_attributes_normalized_idx | gin        |        0 |            0 |             0 | 16 kB
+ logs_2026_08_13 | logs_2026_08_13_attributes_normalized_idx | gin        |        0 |            0 |             0 | 16 kB
+ logs_2026_08_13 | logs_2026_08_13_pkey                      | btree      |        3 |            0 |             0 | 8192 bytes
+ logs_2026_08_13 | logs_2026_08_13_service_timestamp_id_idx  | btree      |     1657 |            0 |             0 | 8192 bytes
+ logs_2026_08_15 | logs_2026_08_15_pkey                      | btree      |        2 |            0 |             0 | 8192 bytes
+ logs_2026_08_15 | logs_2026_08_15_service_timestamp_id_idx  | btree      |     1551 |            0 |             0 | 8192 bytes
+ logs_2026_08_16 | logs_2026_08_16_pkey                      | btree      |        2 |            0 |             0 | 8192 bytes
+ logs_2026_08_16 | logs_2026_08_16_service_timestamp_id_idx  | btree      |     1551 |            0 |             0 | 8192 bytes
+ logs_2026_08_12 | logs_2026_08_12_pkey                      | btree      |        3 |            0 |             0 | 8192 bytes
+ logs_2026_08_09 | logs_2026_08_09_service_timestamp_id_idx  | btree      |     1655 |            1 |             0 | 8192 bytes
+ logs_2026_08_07 | logs_2026_08_07_pkey                      | btree      |        0 |            0 |             0 | 8192 bytes
+ logs_2026_08_07 | logs_2026_08_07_service_timestamp_id_idx  | btree      |     1654 |            0 |             0 | 8192 bytes
+ logs_2026_08_08 | logs_2026_08_08_pkey                      | btree      |        0 |            0 |             0 | 8192 bytes
+ logs_2026_08_08 | logs_2026_08_08_service_timestamp_id_idx  | btree      |     1654 |            0 |             0 | 8192 bytes
+ logs_2026_08_10 | logs_2026_08_10_pkey                      | btree      |        0 |            0 |             0 | 8192 bytes
+ logs_2026_08_10 | logs_2026_08_10_service_timestamp_id_idx  | btree      |     1654 |            0 |             0 | 8192 bytes
+ logs_2026_08_11 | logs_2026_08_11_pkey                      | btree      |      539 |      1417143 |           748 | 8192 bytes
+ logs_2026_08_11 | logs_2026_08_11_service_timestamp_id_idx  | btree      |      112 |       303667 |           301 | 8192 bytes
+ logs_2026_08_09 | logs_2026_08_09_pkey                      | btree      |        0 |            0 |             0 | 8192 bytes
+ logs_2026_08_12 | logs_2026_08_12_service_timestamp_id_idx  | btree      |     1657 |            0 |             0 | 8192 bytes
+(30 rows)
+
+Time: 3.891 ms
+ table_size | indexes_size | total_relation_size 
+------------+--------------+---------------------
+ 31 MB      | 19 MB        | 50 MB
+(1 row)
+
+Time: 2.165 ms
+    backend_type     |  object  |  context  | reads | writes | extends | fsyncs | read_time | write_time | fsync_time 
+---------------------+----------+-----------+-------+--------+---------+--------+-----------+------------+------------
+ autovacuum launcher | relation | normal    |    11 |      0 |         |      0 |         0 |          0 |          0
+ autovacuum worker   | relation | normal    |  1639 |      0 |      79 |      0 |         0 |          0 |          0
+ autovacuum worker   | relation | vacuum    |   206 |      0 |       0 |        |         0 |          0 |           
+ background worker   | relation | normal    |    15 |      0 |       0 |      0 |         0 |          0 |          0
+ checkpointer        | relation | normal    |       |  21187 |         |   1433 |           |          0 |          0
+ client backend      | relation | bulkread  |  6908 |      0 |         |        |         0 |          0 |           
+ client backend      | relation | bulkwrite |     1 |      0 |   28822 |        |         0 |          0 |           
+ client backend      | relation | normal    |  3728 |      0 |   27093 |      0 |         0 |          0 |          0
+ standalone backend  | relation | bulkwrite |     0 |      0 |       8 |        |         0 |          0 |           
+ standalone backend  | relation | normal    |   535 |   1013 |     667 |      0 |         0 |          0 |          0
+ standalone backend  | relation | vacuum    |    10 |      0 |       0 |        |         0 |          0 |           
+(11 rows)
+
+Time: 1.339 ms

@@ -1,0 +1,5 @@
+ wal_records | wal_fpi | wal_generated | wal_buffers_full | wal_write | wal_sync 
+-------------+---------+---------------+------------------+-----------+----------
+      375477 |     194 | 78 MB         |                0 |       160 |      145
+(1 row)
+

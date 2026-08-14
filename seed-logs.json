@@ -1,0 +1,202 @@
+{
+    "logs": [
+      {
+        "timestamp": "2026-08-09T09:00:10Z",
+        "level": "error",
+        "service": "checkout",
+        "message": "payment declined",
+        "attributes": {
+          "region": "eu-west",
+          "user_id": "101",
+          "retries": 2
+        }
+      },
+      {
+        "timestamp": "2026-08-09T09:01:20Z",
+        "level": "error",
+        "service": "checkout",
+        "message": "payment declined",
+        "attributes": {
+          "region": "eu-west",
+          "user_id": "102",
+          "retries": 3
+        }
+      },
+      {
+        "timestamp": "2026-08-09T09:03:40Z",
+        "level": "info",
+        "service": "checkout",
+        "message": "payment completed",
+        "attributes": {
+          "region": "us-east",
+          "user_id": "103",
+          "retries": 0
+        }
+      },
+      {
+        "timestamp": "2026-08-09T09:04:50Z",
+        "level": "warn",
+        "service": "api",
+        "message": "slow request detected",
+        "attributes": {
+          "region": "eu-west",
+          "endpoint": "/orders",
+          "duration_ms": 850
+        }
+      },
+      {
+        "timestamp": "2026-08-09T09:05:10Z",
+        "level": "info",
+        "service": "auth",
+        "message": "user login successful",
+        "attributes": {
+          "region": "eu-west",
+          "user_id": "104",
+          "premium": true
+        }
+      },
+      {
+        "timestamp": "2026-08-09T09:06:30Z",
+        "level": "warn",
+        "service": "auth",
+        "message": "multiple failed login attempts",
+        "attributes": {
+          "region": "eu-west",
+          "user_id": "105",
+          "retries": 4
+        }
+      },
+      {
+        "timestamp": "2026-08-09T09:08:15Z",
+        "level": "error",
+        "service": "auth",
+        "message": "login rejected",
+        "attributes": {
+          "region": "us-east",
+          "user_id": "106",
+          "retries": 5
+        }
+      },
+      {
+        "timestamp": "2026-08-09T09:12:00Z",
+        "level": "info",
+        "service": "api",
+        "message": "request completed",
+        "attributes": {
+          "region": "eu-west",
+          "endpoint": "/users",
+          "duration_ms": 120
+        }
+      },
+      {
+        "timestamp": "2026-08-09T09:15:25Z",
+        "level": "error",
+        "service": "checkout",
+        "message": "database timeout during payment",
+        "attributes": {
+          "region": "eu-west",
+          "user_id": "107",
+          "retries": 1
+        }
+      },
+      {
+        "timestamp": "2026-08-09T09:20:00Z",
+        "level": "info",
+        "service": "checkout",
+        "message": "payment completed",
+        "attributes": {
+          "region": "eu-west",
+          "user_id": "108",
+          "retries": 0
+        }
+      },
+      {
+        "timestamp": "2026-08-09T10:00:00Z",
+        "level": "info",
+        "service": "api",
+        "message": "request completed",
+        "attributes": {
+          "region": "us-east",
+          "endpoint": "/products",
+          "duration_ms": 95
+        }
+      },
+      {
+        "timestamp": "2026-08-09T10:05:10Z",
+        "level": "warn",
+        "service": "api",
+        "message": "slow request detected",
+        "attributes": {
+          "region": "us-east",
+          "endpoint": "/products",
+          "duration_ms": 1200
+        }
+      },
+      {
+        "timestamp": "2026-08-09T10:10:20Z",
+        "level": "error",
+        "service": "api",
+        "message": "internal request failure",
+        "attributes": {
+          "region": "eu-west",
+          "endpoint": "/orders",
+          "duration_ms": 500
+        }
+      },
+      {
+        "timestamp": "2026-08-09T10:15:30Z",
+        "level": "info",
+        "service": "auth",
+        "message": "user login successful",
+        "attributes": {
+          "region": "eu-west",
+          "user_id": "109",
+          "premium": false
+        }
+      },
+      {
+        "timestamp": "2026-08-09T10:20:40Z",
+        "level": "error",
+        "service": "checkout",
+        "message": "payment declined",
+        "attributes": {
+          "region": "us-east",
+          "user_id": "110",
+          "retries": 3
+        }
+      },
+      {
+        "timestamp": "2026-08-09T11:00:00Z",
+        "level": "debug",
+        "service": "api",
+        "message": "cache lookup completed",
+        "attributes": {
+          "region": "eu-west",
+          "endpoint": "/products",
+          "cache_hit": true
+        }
+      },
+      {
+        "timestamp": "2026-08-09T11:10:00Z",
+        "level": "info",
+        "service": "auth",
+        "message": "user logout successful",
+        "attributes": {
+          "region": "eu-west",
+          "user_id": "111",
+          "premium": true
+        }
+      },
+      {
+        "timestamp": "2026-08-09T11:20:00Z",
+        "level": "error",
+        "service": "checkout",
+        "message": "payment declined",
+        "attributes": {
+          "region": "eu-west",
+          "user_id": "112",
+          "retries": 2
+        }
+      }
+    ]
+  }

@@ -1,0 +1,127 @@
+
+> log-service@1.0.0 bench:baseline
+> node bench/baseline.mjs
+
+{
+  "run_id": "bench-mstk078x",
+  "generated_at": "2026-08-14T23:04:48.749Z",
+  "configuration": {
+    "base_url": "http://localhost:8080",
+    "initial_logs": 100000,
+    "mixed_logs": 20000,
+    "batch_size": 100,
+    "concurrency": 4,
+    "query_iterations": 100,
+    "since": "2026-08-14T21:02:56.337Z",
+    "until": "2026-08-14T23:04:56.337Z"
+  },
+  "ingestion_only": {
+    "requested_logs": 100000,
+    "batch_size": 100,
+    "concurrency": 4,
+    "accepted_logs": 100000,
+    "rejected_logs": 0,
+    "failed_batches": 0,
+    "status_counts": {
+      "200": 1000
+    },
+    "elapsed_ms": 6341.2,
+    "logs_per_second": 15769.89,
+    "batch_latency": {
+      "samples": 1000,
+      "p50_ms": 17.74,
+      "p95_ms": 62.28,
+      "p99_ms": 95.6,
+      "average_ms": 25.05
+    }
+  },
+  "reads_after_ingestion": {
+    "service_query": {
+      "failures": 0,
+      "status_counts": {
+        "200": 100
+      },
+      "latency": {
+        "samples": 100,
+        "p50_ms": 50.62,
+        "p95_ms": 66.65,
+        "p99_ms": 70.78,
+        "average_ms": 53.14
+      }
+    },
+    "literal_search": {
+      "failures": 0,
+      "status_counts": {
+        "200": 100
+      },
+      "latency": {
+        "samples": 100,
+        "p50_ms": 103.25,
+        "p95_ms": 131.59,
+        "p99_ms": 166.85,
+        "average_ms": 106.56
+      }
+    },
+    "aggregation": {
+      "failures": 0,
+      "status_counts": {
+        "200": 100
+      },
+      "latency": {
+        "samples": 100,
+        "p50_ms": 74.78,
+        "p95_ms": 97.3,
+        "p99_ms": 120.02,
+        "average_ms": 78.13
+      }
+    }
+  },
+  "mixed_load": {
+    "ingestion": {
+      "requested_logs": 20000,
+      "batch_size": 100,
+      "concurrency": 4,
+      "accepted_logs": 20000,
+      "rejected_logs": 0,
+      "failed_batches": 0,
+      "status_counts": {
+        "200": 200
+      },
+      "elapsed_ms": 4227.94,
+      "logs_per_second": 4730.44,
+      "batch_latency": {
+        "samples": 200,
+        "p50_ms": 88.5,
+        "p95_ms": 192.62,
+        "p99_ms": 282.53,
+        "average_ms": 83.56
+      }
+    },
+    "service_query": {
+      "failures": 0,
+      "status_counts": {
+        "200": 100
+      },
+      "latency": {
+        "samples": 100,
+        "p50_ms": 173.93,
+        "p95_ms": 385.76,
+        "p99_ms": 503.08,
+        "average_ms": 180.13
+      }
+    },
+    "aggregation": {
+      "failures": 0,
+      "status_counts": {
+        "200": 100
+      },
+      "latency": {
+        "samples": 100,
+        "p50_ms": 196.9,
+        "p95_ms": 411.28,
+        "p99_ms": 631.74,
+        "average_ms": 205.37
+      }
+    }
+  }
+}

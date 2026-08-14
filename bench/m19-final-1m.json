@@ -1,0 +1,4 @@
+
+> log-service@1.0.0 bench:baseline
+> node bench/baseline.mjs
+

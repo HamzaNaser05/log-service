@@ -37,17 +37,17 @@ import {
 } from "../helpers/test-database.js";
 
 class BlockingWriter
-implements LogBatchWriter {
+  implements LogBatchWriter {
   private releaseWrite:
     (() => void) | null =
-      null;
+    null;
 
   private readonly writeStarted:
     Promise<void>;
 
   private resolveWriteStarted:
     (() => void) | null =
-      null;
+    null;
 
   public constructor() {
     this.writeStarted =
@@ -162,6 +162,8 @@ beforeAll(
           maxMicrobatchLogs: 1,
 
           maxWaitMilliseconds: 1,
+
+          flushThresholdLogs: 1,
 
           retryAfterSeconds: 7,
         },
@@ -326,7 +328,7 @@ describe(
 
           expect(
             response.headers[
-              "retry-after"
+            "retry-after"
             ],
           ).toBe("7");
 

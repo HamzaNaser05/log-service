@@ -49,19 +49,16 @@ export function buildServer(
       new BinaryCopyLogWriter(
         pool,
       ),
-
       {
-        maxBufferedLogs:
-          10_000,
+        maxBufferedLogs: 10_000,
 
-        maxMicrobatchLogs:
-          1_000,
+        maxMicrobatchLogs: 1_000,
 
-        maxWaitMilliseconds:
-          5,
+        flushThresholdLogs: 400,
 
-        retryAfterSeconds:
-          1,
+        maxWaitMilliseconds: 5,
+
+        retryAfterSeconds: 1,
       },
     );
 

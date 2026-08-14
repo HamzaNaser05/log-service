@@ -14,6 +14,8 @@ export type AppConfig = {
   ingestionMicrobatchMaxWaitMs: number;
 
   ingestionRetryAfterSeconds: number;
+
+  ingestionMicrobatchFlushLogs: number;
 };
 
 function requireEnv(
@@ -164,6 +166,18 @@ export function loadConfig(): AppConfig {
 
         1,
         3600,
+      ),
+
+    ingestionMicrobatchFlushLogs:
+      parseIntegerInRange(
+        "INGESTION_MICROBATCH_FLUSH_LOGS",
+
+        requireEnv(
+          "INGESTION_MICROBATCH_FLUSH_LOGS",
+        ),
+
+        1,
+        100_000,
       ),
   };
 }
