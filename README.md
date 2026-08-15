@@ -25,6 +25,27 @@ The system is designed to ingest structured logs at high throughput while preser
 - Real PostgreSQL integration tests
 - GitHub Actions CI
 - Docker Compose deployment
+- React + TypeScript operations dashboard
+
+---
+
+## Operations Dashboard
+
+The professional demonstration UI lives in `frontend/` and uses only the service's existing API contracts. It includes an overview, cursor-paginated log explorer, database-backed analytics, and the documented performance story.
+
+Start the complete stack:
+
+```bash
+docker compose up --build
+```
+
+Then open:
+
+```text
+http://localhost:3000
+```
+
+The dashboard defaults to the same-origin `/api` proxy. Its API base URL and automatic refresh interval can be changed from **Settings**. For local frontend development, run `npm --prefix frontend install` once and then `npm run frontend:dev`; Vite proxies `/api` to `http://localhost:8080` by default.
 
 ---
 

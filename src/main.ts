@@ -143,6 +143,7 @@ async function main(): Promise<void> {
         pool,
         true,
         ingestionQueue,
+        config.corsOrigins,
       );
 
     /*

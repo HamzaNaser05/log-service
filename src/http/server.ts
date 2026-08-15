@@ -1,5 +1,7 @@
 import Fastify from "fastify";
 
+import cors from "@fastify/cors";
+
 import type {
   FastifyInstance,
 } from "fastify";
@@ -35,6 +37,9 @@ export function buildServer(
 
   ingestionQueue?:
     LogIngestionQueue,
+
+  corsOrigins:
+    readonly string[] = [],
 ): FastifyInstance {
   const server =
     Fastify({
@@ -42,6 +47,12 @@ export function buildServer(
       return503OnClosing:
         true,
     });
+
+  if (corsOrigins.length > 0) {
+    void server.register(cors, {
+      origin: [...corsOrigins],
+    });
+  }
 
   const effectiveIngestionQueue =
     ingestionQueue ??

@@ -46,6 +46,8 @@ services:
 
       INGESTION_MICROBATCH_FLUSH_LOGS: "${INGESTION_MICROBATCH_FLUSH_LOGS:-400}"
 
+      CORS_ORIGIN: "${CORS_ORIGIN:-http://localhost:3000}"
+
     ports:
       - "8080:8080"
 
@@ -62,6 +64,23 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  frontend:
+    build:
+      context: ./frontend
+
+    ports:
+      - "3000:80"
+
+    depends_on:
+      app:
+        condition: service_healthy
+
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
 volumes:
   postgres_data:

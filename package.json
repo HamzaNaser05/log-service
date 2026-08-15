@@ -8,6 +8,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json",
     "build": "tsc",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
     "start": "node --env-file-if-exists=.env dist/main.js",
     "test": "vitest run",
     "bench:baseline": "node bench/baseline.mjs"
@@ -23,6 +25,7 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@fastify/cors": "^11.3.0",
     "fastify": "^5.11.3",
     "pg": "^8.23.0",
     "pg-copy-streams": "^7.0.0"

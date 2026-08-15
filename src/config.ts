@@ -3,6 +3,8 @@ export type AppConfig = {
 
   databaseUrl: string;
 
+  corsOrigins: string[];
+
   retentionDays: number;
 
   partitionAheadDays: number;
@@ -95,6 +97,12 @@ export function loadConfig(): AppConfig {
       requireEnv(
         "DATABASE_URL",
       ),
+
+    corsOrigins:
+      (process.env.CORS_ORIGIN ?? "")
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter((origin) => origin.length > 0),
 
     retentionDays:
       parseIntegerInRange(
