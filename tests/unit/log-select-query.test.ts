@@ -51,7 +51,7 @@ import {
           );
   
           expect(query.text).toContain(
-            "ORDER BY timestamp DESC, id DESC",
+            "ORDER BY logs.timestamp DESC, logs.id DESC"          
           );
   
           expect(query.text).toContain(
@@ -319,7 +319,7 @@ import {
           );
   
           expect(query.text).toContain(
-            "ORDER BY timestamp DESC, id DESC",
+            "ORDER BY logs.timestamp DESC, logs.id DESC"          
           );
   
           expect(query.text).toContain(
