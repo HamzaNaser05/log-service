@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and Test
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16
+
+        env:
+          POSTGRES_USER: log_service
+          POSTGRES_PASSWORD: log_service
+          POSTGRES_DB: log_service
+
+        ports:
+          - 5432:5432
+
+        options: >-
+          --health-cmd "pg_isready -U log_service -d log_service"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PORT: "8080"
+
+      DATABASE_URL: >-
+        postgresql://log_service:log_service@localhost:5432/log_service
+
+      TEST_DATABASE_URL: >-
+        postgresql://log_service:log_service@localhost:5432/log_service_test
+
+      TEST_ADMIN_DATABASE_URL: >-
+        postgresql://log_service:log_service@localhost:5432/postgres
+
+      RETENTION_DAYS: "7"
+
+      PARTITION_AHEAD_DAYS: "2"
+
+      INGESTION_QUEUE_MAX_LOGS: "10000"
+
+      INGESTION_MICROBATCH_MAX_LOGS: "1000"
+
+      INGESTION_MICROBATCH_FLUSH_LOGS: "400"
+
+      INGESTION_MICROBATCH_MAX_WAIT_MS: "5"
+
+      INGESTION_RETRY_AFTER_SECONDS: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check application
+        run: npm run typecheck
+
+      - name: Type check tests
+        run: npm run typecheck:test
+
+      - name: Build application
+        run: npm run build
+
+      - name: Run test suite
+        run: npm test
