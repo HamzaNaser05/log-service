@@ -43,7 +43,7 @@ import type {
   
   beforeEach(async () => {
     await getPool().query(
-      "TRUNCATE TABLE logs, log_minute_rollups RESTART IDENTITY",
+      "TRUNCATE TABLE logs, log_second_rollups RESTART IDENTITY",
     );
   });
   
@@ -212,21 +212,26 @@ import type {
 
           const remainingRollups =
             await testPool.query<{
-              minute_start: string;
+              second_start: string;
               log_count: string;
             }>(
               `
                 SELECT
                   to_char(
-                    minute_start
+                    second_start
                       AT TIME ZONE 'UTC',
                     'YYYY-MM-DD"T"HH24:MI:SS"Z"'
-                  ) AS minute_start,
-                  log_count::text
-                FROM log_minute_rollups
+                  ) AS second_start,
+                  (
+                    debug_count +
+                    info_count +
+                    warn_count +
+                    error_count
+                  )::text AS log_count
+                FROM log_second_rollups
                 WHERE service =
                   'retention-test'
-                ORDER BY minute_start
+                ORDER BY second_start
               `,
             );
 
@@ -234,11 +239,12 @@ import type {
             remainingRollups.rows,
           ).toEqual([
             {
-              minute_start:
+              second_start:
                 "2026-08-09T13:00:00Z",
               log_count: "1",
             },
           ]);
+
   
           const oldPartition =
             await testPool.query<{

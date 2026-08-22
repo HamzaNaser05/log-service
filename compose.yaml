@@ -2,6 +2,15 @@ services:
   postgres:
     image: postgres:16
 
+    command:
+      - postgres
+      - -c
+      - max_wal_size=4GB
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - checkpoint_completion_target=0.9
+
     environment:
       POSTGRES_DB: log_service
       POSTGRES_USER: log_service
@@ -46,7 +55,7 @@ services:
 
       INGESTION_MICROBATCH_FLUSH_LOGS: "${INGESTION_MICROBATCH_FLUSH_LOGS:-2000}"
 
-      INGESTION_WRITER_COUNT: "${INGESTION_WRITER_COUNT:-2}"
+      INGESTION_WRITER_COUNT: "${INGESTION_WRITER_COUNT:-1}"
 
       CORS_ORIGIN: "${CORS_ORIGIN:-http://localhost:3000}"
 

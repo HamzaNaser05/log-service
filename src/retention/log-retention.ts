@@ -114,19 +114,19 @@ import type {
 
     /*
      * Rollups are not partitioned because
-     * they contain only a handful of rows
-     * per minute. Remove expired minutes,
-     * then rebuild the cutoff minute after
+     * they remain much smaller than raw logs.
+     * Remove expired seconds, then rebuild
+     * the cutoff second after
      * the raw-row delete above so a partial
      * retention boundary stays exact.
      */
     const deletedRollups =
       await client.query(
         `
-          DELETE FROM log_minute_rollups
-          WHERE minute_start <=
+          DELETE FROM log_second_rollups
+          WHERE second_start <=
             date_trunc(
-              'minute',
+              'second',
               $1::timestamptz
             )
         `,
@@ -137,44 +137,55 @@ import type {
 
     await client.query(
       `
-        INSERT INTO log_minute_rollups (
-          minute_start,
+        INSERT INTO log_second_rollups (
+          second_start,
           service,
-          level,
-          log_count
+          debug_count,
+          info_count,
+          warn_count,
+          error_count
         )
         SELECT
           date_trunc(
-            'minute',
+            'second',
             timestamp
           ),
           service,
-          level,
-          count(*)
+          count(*) FILTER (
+            WHERE level = 'debug'
+          ),
+          count(*) FILTER (
+            WHERE level = 'info'
+          ),
+          count(*) FILTER (
+            WHERE level = 'warn'
+          ),
+          count(*) FILTER (
+            WHERE level = 'error'
+          )
         FROM logs
         WHERE timestamp >=
           date_trunc(
-            'minute',
+            'second',
             $1::timestamptz
           )
           AND timestamp <
             date_trunc(
-              'minute',
+              'second',
               $1::timestamptz
-            ) + INTERVAL '1 minute'
+            ) + INTERVAL '1 second'
         GROUP BY
           date_trunc(
-            'minute',
+            'second',
             timestamp
           ),
-          service,
-          level
+          service
       `,
       [
         cutoff.toISOString(),
       ],
     );
-  
+
     return {
       droppedPartitions,
       deletedCutoffRows,

@@ -2,15 +2,17 @@ import { Icon } from "../components/Icons";
 import { PageHeader } from "../components/ui";
 
 const progression = [
-  { label: "Official submission", value: 4.54, display: "~4.5k", note: "120-second shared-generator load run", tone: "muted" },
-  { label: "Rollup, one writer", value: 4.77, display: "~4.8k", note: "Aggregation moved off the raw table", tone: "info" },
-  { label: "Final clean regression", value: 6.43, display: "~6.4k", note: "Indexed text COPY with two writers", tone: "clean" },
-  { label: "Final populated regression", value: 6.41, display: "~6.4k", note: "391,864 rows after the run", tone: "best" },
+  { label: "Official baseline", value: 4.63, display: "~4.6k", note: "Most recent 120-second grading run", tone: "muted" },
+  { label: "Final clean load", value: 6.03, display: "~6.0k", note: "724,317 accepted over 120 seconds", tone: "clean" },
+  { label: "Final stress", value: 5.54, display: "~5.5k", note: "Database grew past 1.5 million rows", tone: "info" },
+  { label: "Final spike", value: 5.78, display: "~5.8k", note: "Zero errors during the 30k offered burst", tone: "best" },
 ] as const;
 
 const datasetRuns = [
-  { logs: 194_964, throughput: 6.43 },
-  { logs: 391_864, throughput: 6.41 },
+  { logs: 724_317, throughput: 6.03 },
+  { logs: 1_563_959, throughput: 5.54 },
+  { logs: 2_706_293, throughput: 5.78 },
+  { logs: 3_350_702, throughput: 5.32 },
 ] as const;
 
 export function Performance() {
@@ -27,20 +29,20 @@ export function Performance() {
 
       <section className="performance-hero">
         <article className="result-card clean-result">
-          <div className="result-label"><span className="result-icon"><Icon name="check" /></span>Final clean regression</div>
-          <div className="result-value">6.43k <small>logs/sec</small></div>
-          <p>194,964 accepted logs, zero HTTP errors, and 100% read-after-write success.</p>
+          <div className="result-label"><span className="result-icon"><Icon name="check" /></span>Final 120-second load</div>
+          <div className="result-value">6.03k <small>logs/sec</small></div>
+          <p>724,317 accepted logs, zero HTTP errors, and 100% read-after-write success.</p>
           <span className="target-delta">Target not yet met</span>
         </article>
         <article className="result-card best-result">
           <div className="result-label"><span className="result-icon"><Icon name="performance" /></span>Primary aggregation p95</div>
-          <div className="result-value">205 <small>ms</small></div>
-          <p>Down from the official 870.9 ms load result through exact minute rollups.</p>
+          <div className="result-value">91 <small>ms</small></div>
+          <p>Down from the official 1,130 ms load result through compact exact-second rollups.</p>
           <span className="target-delta">Below 400 ms query threshold</span>
         </article>
         <aside className="distinction-note">
           <Icon name="alert" />
-          <div><strong>Measured, not marketed</strong><p>These are short regression runs. The README clearly separates them from the full official benchmark.</p></div>
+          <div><strong>Measured, not marketed</strong><p>All four stock scenarios ran against one database that grew to 3.35 million rows.</p></div>
         </aside>
       </section>
 
@@ -73,7 +75,7 @@ export function Performance() {
               </div>
             ))}
           </div>
-          <p className="chart-footnote">Throughput remained stable as the indexed dataset grew from 195k to 392k rows.</p>
+          <p className="chart-footnote">Every selected run had zero HTTP errors and 100% read-after-write visibility as the dataset grew.</p>
         </section>
       </div>
 
@@ -82,7 +84,7 @@ export function Performance() {
         <div className="resource-grid">
           <article className="resource-card"><span className="resource-icon"><Icon name="server" /></span><div><span>Application</span><strong>0.5 CPU</strong><strong>256 MB</strong></div></article>
           <article className="resource-card postgres-resource"><span className="resource-icon"><Icon name="database" /></span><div><span>PostgreSQL 16</span><strong>1 CPU</strong><strong>1 GB</strong></div></article>
-          <article className="resource-detail"><Icon name="cpu" /><div><strong>Performance context</strong><p>Text COPY, two bounded writer lanes, 33-log HTTP batches, and transactional minute rollups. <code>fsync</code>, <code>synchronous_commit</code>, and <code>full_page_writes</code> remained on.</p></div></article>
+          <article className="resource-detail"><Icon name="cpu" /><div><strong>Performance context</strong><p>Text COPY, one measured writer lane, 33-log HTTP batches, and transactional second rollups. <code>fsync</code>, <code>synchronous_commit</code>, and <code>full_page_writes</code> remained on.</p></div></article>
         </div>
       </section>
     </>

@@ -7,6 +7,7 @@ import {
 } from "./db/migrate.js";
 
 import {
+  createAggregateDatabasePool,
   createDatabasePool,
 } from "./db/pool.js";
 
@@ -45,6 +46,11 @@ async function main(): Promise<void> {
 
   const pool =
     createDatabasePool(
+      config.databaseUrl,
+    );
+
+  const aggregatePool =
+    createAggregateDatabasePool(
       config.databaseUrl,
     );
 
@@ -151,6 +157,15 @@ async function main(): Promise<void> {
     await ingestionQueue.start();
 
     /*
+     * Establish the reserved aggregate
+     * connection before health can report
+     * the service as ready.
+     */
+    await aggregatePool.query(
+      "SELECT 1",
+    );
+
+    /*
      * 6. Build Fastify using our
      * ingestion queue.
      */
@@ -160,6 +175,7 @@ async function main(): Promise<void> {
         true,
         ingestionQueue,
         config.corsOrigins,
+        aggregatePool,
       );
 
     /*
@@ -211,6 +227,7 @@ async function main(): Promise<void> {
 
         closeDatabase:
           async () => {
+            await aggregatePool.end();
             await pool.end();
           },
       });
@@ -296,7 +313,10 @@ async function main(): Promise<void> {
       }
     }
 
-    await pool.end();
+    await Promise.allSettled([
+      aggregatePool.end(),
+      pool.end(),
+    ]);
 
     throw error;
   }

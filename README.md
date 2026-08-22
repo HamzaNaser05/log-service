@@ -10,12 +10,13 @@ The system is designed to ingest structured logs at high throughput while preser
 - Bounded in-memory ingestion queue
 - Micro-batching
 - Dedicated PostgreSQL writer connection
+- Dedicated PostgreSQL aggregation connection
 - Per-entry validation with partial batch acceptance
 - Daily UTC PostgreSQL partitions
 - Automatic partition creation
 - Configurable retention
 - JSONB attributes with normalized searchable representation
-- GIN indexing for arbitrary attribute equality
+- Selective GIN indexing for attribute equality
 - Deterministic keyset pagination
 - Literal case-insensitive message search
 - Time-bucket aggregation
@@ -58,30 +59,27 @@ The service was benchmarked under constrained resources:
 | Application | 0.5 CPU / 256 MB RAM |
 | PostgreSQL | 1 CPU / 1 GB RAM |
 
-The current regression test uses the shared load generator's exact performance
-workload: batch size 33, 70 maximum ingestion VUs, 15,000 requested logs/sec,
-one aggregation/sec, and 23 read-after-write iterations/sec. A clean 30-second
-run on 2026-08-22 produced:
+The final regression used the shared generator's four stock scenarios without
+duration overrides: batch size 33, 70 maximum ingestion VUs, one aggregation
+per second, and concurrent read-after-write checks. All four ran against one
+continuously growing database, which finished with 3,350,702 raw logs.
 
-| Metric | Result |
-|---|---:|
-| Accepted logs | 194,964 |
-| Accepted throughput | 6,433 logs/sec |
-| Ingestion p95 | 479.60 ms |
-| Aggregation p95 | 205.11 ms |
-| Read-after-write success | 100% |
-| HTTP errors | 0 |
+| Scenario | Accepted | Logs/sec | Ingest p95 | Aggregate p95 | Visibility | HTTP errors |
+|---|---:|---:|---:|---:|---:|---:|
+| Load (120 s at 15k offered) | 724,317 | 6,030 | 542 ms | 91 ms | 100% | 0 |
+| Stress (15k → 30k offered) | 833,448 | 5,536 | 638 ms | 368 ms | 100% | 0 |
+| Spike (7.5k → 30k → 7.5k) | 579,744 | 5,785 | 539 ms | 363 ms | 100% | 0 |
+| Breakpoint (15k → 45k offered) | 641,652 | 5,319 | 607 ms | 428 ms | 100% | 0 |
 
-A second 30-second run without truncating first grew the dataset to 391,864
-logs (196 MB including indexes) and sustained 6,414 logs/sec. Aggregation p95
-was 305.53 ms. A live resource snapshot during that run showed 36.18% CPU and
-40.98 MiB for the application, and 79.62% CPU and 250.6 MiB for PostgreSQL.
+After the stress run, at 1,563,959 rows, the application used 41.62 MiB and
+PostgreSQL used 286.7 MiB. The compact rollup contained 3,384 rows / 744 KiB.
+At the end of all scenarios PostgreSQL used 479.1 MiB, within the 1 GiB limit.
 
-The official baseline submission accepted 4,540.8 logs/sec in its 120-second
-load scenario and had an aggregation p95 of 870.9 ms. The new short regression
-runs show a material improvement and restore query-score headroom, but they do
-not yet meet the 15,000 logs/sec target and are not presented as a replacement
-for a full four-scenario grading run.
+The most recent official baseline accepted 4,631 logs/sec in its load scenario
+and reported 1,130 ms aggregation p95; its stress aggregation p95 was 2,923 ms.
+The local full run therefore improved load throughput by about 30% and stress
+aggregation by about 8x. It still does not meet the aspirational 15,000
+logs/sec target, and official infrastructure can produce different numbers.
 
 PostgreSQL durability remained enabled during testing:
 
@@ -93,11 +91,12 @@ full_page_writes = on
 
 The performance work was measurement-driven rather than based on disabling durability guarantees.
 
-The bottlenecks found were raw-table aggregation, one serial COPY lane,
-per-request info logging, and application-heavy binary payload construction.
-The applied changes are transactional minute rollups, two COPY lanes, warn-level
-production logging, a 50 ms microbatch window, and a measured switch to text
-COPY. Detailed methodology and limitations are in `docs/PERFORMANCE.md`.
+The important bottlenecks were raw-table aggregation, high-cardinality GIN
+maintenance, checkpoint churn, unnecessary insert-triggered vacuum scans, and
+application-heavy binary payload construction. The final design uses compact
+transactional second rollups, one calibrated text-COPY lane, a selective
+attribute GIN, a reserved aggregation connection, and conservative PostgreSQL
+checkpoint tuning. Detailed evidence is in `docs/PERFORMANCE.md`.
 
 ---
 
@@ -126,7 +125,7 @@ COPY. Detailed methodology and limitations are in `docs/PERFORMANCE.md`.
                               Micro-batching
                                     │
                                     ▼
-                           Two COPY Writers
+                            One COPY Writer
                                     │
                                     ▼
                        PostgreSQL Text COPY
@@ -139,20 +138,20 @@ COPY. Detailed methodology and limitations are in `docs/PERFORMANCE.md`.
                        │ JSONB attributes    │
                        │ B-tree indexes      │
                        │ GIN indexes         │
-                       │ Minute rollups      │
+                       │ Second rollups      │
                        └──────────┬──────────┘
                                   │
                     ┌─────────────┴─────────────┐
                     ▼                           ▼
                GET /logs             GET /logs/aggregate
                     │                           │
-             Keyset pagination          minute rollups +
+             Keyset pagination          second rollups +
                                         exact edge scan
 ```
 
 ---
 
-# Why COPY and two writer lanes?
+# Why COPY and one writer lane?
 
 The initial implementation used parameterized per-row `INSERT` statements inside a transaction.
 
@@ -167,7 +166,7 @@ bounded queue
      ↓
 microbatch
      ↓
-two leased writer connections
+one leased writer connection
      ↓
 PostgreSQL COPY FROM STDIN
      ↓
@@ -176,10 +175,10 @@ one transaction
 
 Multiple HTTP batches can therefore share one database COPY operation.
 
-Two independent lanes overlap PostgreSQL work without allowing concurrent use
-of one database connection. Minute-rollup rows include a writer shard in their
-primary key, so both transactions can update counts without contending on the
-same row. Aggregation sums those shards transparently.
+One calibrated writer was faster in the final indexed workload because a
+second lane competed with aggregation on the one-CPU PostgreSQL container.
+The schema retains a writer-shard key so `INGESTION_WRITER_COUNT` can be raised
+for experiments without hot-row conflicts, but the measured default is one.
 
 An HTTP request is not acknowledged as successful until its microbatch has committed successfully.
 
@@ -219,8 +218,8 @@ Partitions are created automatically ahead of time.
 
 Retention removes fully expired partitions efficiently and performs a bounded delete only inside the cutoff-day partition when necessary.
 
-The small minute-rollup table is retained in the same maintenance transaction.
-The cutoff minute is rebuilt from retained raw rows, keeping partial-minute
+The small second-rollup table is retained in the same maintenance transaction.
+The cutoff second is rebuilt from retained raw rows, keeping fractional-second
 retention exact.
 
 ---
@@ -261,7 +260,11 @@ Example:
 }
 ```
 
-A GIN index supports arbitrary attribute equality filters.
+A compact expression GIN supports arbitrary attribute equality filters except
+`request_id` and `user_id`. Those two generator-defined high-cardinality keys
+were responsible for most GIN write amplification, so they use parameterized
+JSON extraction instead. The API behavior is unchanged; ID-only searches can
+be slower than other attribute searches.
 
 Message substring search uses a trigram GIN index. The primary key supports the
 deterministic `(timestamp, id)` order, while
@@ -270,12 +273,13 @@ the load generator's read-after-write check.
 
 ## Aggregation rollups
 
-`log_minute_rollups` stores counts by minute, service, level, and writer shard.
-Ingestion updates it in the same transaction as raw logs. Aggregations without
-`q` or attribute filters read the compact rollup table; the first and last
-partial minutes are read from raw logs so arbitrary `since` and `until`
-boundaries remain exact. Queries using message or attribute filters fall back
-to indexed raw logs because those dimensions are not present in the rollup.
+`log_second_rollups` stores one row per second, service, and writer shard, with
+four fixed counters for `debug`, `info`, `warn`, and `error`. Ingestion updates
+it in the same transaction as raw logs. Aggregations without `q` or attribute
+filters read this compact table; only the first and last fractional seconds use
+raw logs, preserving exact inclusive/exclusive boundaries. Message- or
+attribute-filtered aggregations fall back to indexed raw logs because those
+dimensions are not present in the rollup.
 
 ---
 
@@ -418,7 +422,7 @@ provides the four required endpoints on `localhost:8080`.
 | `INGESTION_MICROBATCH_MAX_LOGS` | `5000` | Maximum logs in one COPY |
 | `INGESTION_MICROBATCH_MAX_WAIT_MS` | `50` | Maximum batching delay |
 | `INGESTION_MICROBATCH_FLUSH_LOGS` | `2000` | Immediate-flush threshold |
-| `INGESTION_WRITER_COUNT` | `2` | Parallel durable COPY lanes (`1`–`4`) |
+| `INGESTION_WRITER_COUNT` | `1` | Parallel durable COPY lanes (`1`–`4`) |
 | `INGESTION_RETRY_AFTER_SECONDS` | `1` | Backpressure retry hint |
 | `CORS_ORIGIN` | `http://localhost:3000` | Comma-separated allowed dashboard origins |
 
@@ -432,12 +436,14 @@ default service is unauthenticated and imposes no grader-facing quota.
 ## Known limitations
 
 - The exact shared-generator regression remains below the 15k logs/sec target.
-- Minute rollups accelerate service/level aggregations; `q` and attribute
+- Second rollups accelerate service/level aggregations; `q` and attribute
   aggregations still scan indexed raw logs.
+- `request_id`-only and `user_id`-only filters use JSON extraction rather than
+  the smaller searchable-attribute GIN and can be slower over broad ranges.
 - Daily partitions make retention efficient, but the cutoff-day partial delete
   can create some bloat until PostgreSQL vacuums that partition.
-- Writer concurrency above two did not improve the constrained benchmark and
-  can reduce query connection headroom.
+- Writer concurrency above one did not improve the final constrained indexed
+  benchmark and can reduce query headroom.
 
 ---
 

@@ -17,6 +17,10 @@ import type {
   BuiltSqlQuery,
 } from "./log-select-query.js";
 
+import type {
+  LogLevel,
+} from "../domain/log.js";
+
 const BUCKET_INTERVALS:
   Record<AggregateBucket, string> = {
     "1m": "1 minute",
@@ -29,6 +33,22 @@ const GROUP_BY_EXPRESSIONS:
   Record<AggregateGroupBy, string> = {
     service: "service",
     level: "level",
+  };
+
+const ROLLUP_LEVEL_COUNT_COLUMNS:
+  Record<LogLevel, string> = {
+    debug: "rollup.debug_count",
+    info: "rollup.info_count",
+    warn: "rollup.warn_count",
+    error: "rollup.error_count",
+  };
+
+const LEVEL_SQL_LITERALS:
+  Record<LogLevel, string> = {
+    debug: "'debug'::text",
+    info: "'info'::text",
+    warn: "'warn'::text",
+    error: "'error'::text",
   };
 
 function buildRawLogAggregateQuery(
@@ -116,9 +136,6 @@ function appendRollupDimensionConditions(
         filters.level,
       );
 
-    rollupConditions.push(
-      `rollup.level = ${parameter}`,
-    );
     rawConditions.push(
       `log.level = ${parameter}`,
     );
@@ -182,6 +199,70 @@ function buildRollupLogAggregateQuery(
       ? ""
       : `\n    AND ${rawConditions.join("\n    AND ")}`;
 
+  let rollupLevelExpression =
+    "NULL::text";
+
+  let rollupCountExpression =
+    `
+      rollup.debug_count +
+      rollup.info_count +
+      rollup.warn_count +
+      rollup.error_count
+    `.trim();
+
+  let rollupExpansionSql = "";
+  let rollupPositiveCountSql = "";
+
+  if (filters.level !== null) {
+    const countColumn =
+      ROLLUP_LEVEL_COUNT_COLUMNS[
+        filters.level
+      ];
+
+    rollupCountExpression =
+      countColumn;
+
+    rollupPositiveCountSql =
+      `\n    AND ${countColumn} > 0`;
+
+    if (filters.groupBy === "level") {
+      rollupLevelExpression =
+        LEVEL_SQL_LITERALS[
+          filters.level
+        ];
+    }
+  } else if (
+    filters.groupBy === "level"
+  ) {
+    rollupLevelExpression =
+      "expanded.level";
+
+    rollupCountExpression =
+      "expanded.log_count";
+
+    rollupExpansionSql = `
+  CROSS JOIN LATERAL (
+    VALUES
+      ('debug'::text, rollup.debug_count),
+      ('info'::text, rollup.info_count),
+      ('warn'::text, rollup.warn_count),
+      ('error'::text, rollup.error_count)
+  ) AS expanded (level, log_count)`;
+
+    rollupPositiveCountSql =
+      "\n    AND expanded.log_count > 0";
+  }
+
+  const rawLevelExpression =
+    filters.groupBy === "level"
+      ? "log.level"
+      : "NULL::text";
+
+  const rawLevelGroupSql =
+    filters.groupBy === "level"
+      ? ",\n    log.level"
+      : "";
+
   return {
     text: `
 WITH bounds AS (
@@ -190,56 +271,72 @@ WITH bounds AS (
     ${untilParameter}::timestamptz AS until_time,
     CASE
       WHEN ${sinceParameter}::timestamptz =
-        date_trunc('minute', ${sinceParameter}::timestamptz)
+        date_trunc('second', ${sinceParameter}::timestamptz)
       THEN ${sinceParameter}::timestamptz
-      ELSE date_trunc('minute', ${sinceParameter}::timestamptz) +
-        INTERVAL '1 minute'
+      ELSE date_trunc('second', ${sinceParameter}::timestamptz) +
+        INTERVAL '1 second'
     END AS full_start,
-    date_trunc('minute', ${untilParameter}::timestamptz) AS full_end
+    date_trunc('second', ${untilParameter}::timestamptz) AS full_end
 ),
-minute_counts AS (
+second_counts AS (
   SELECT
-    rollup.minute_start,
+    rollup.second_start,
     rollup.service,
-    rollup.level,
-    rollup.log_count
-  FROM log_minute_rollups AS rollup
+    ${rollupLevelExpression} AS level,
+    ${rollupCountExpression} AS log_count
+  FROM log_second_rollups AS rollup${rollupExpansionSql}
   CROSS JOIN bounds
   WHERE bounds.full_start < bounds.full_end
-    AND rollup.minute_start >= bounds.full_start
-    AND rollup.minute_start < bounds.full_end${rollupDimensionSql}
+    AND rollup.second_start >= bounds.full_start
+    AND rollup.second_start < bounds.full_end${rollupDimensionSql}${rollupPositiveCountSql}
 
   UNION ALL
 
   SELECT
-    date_trunc('minute', log.timestamp) AS minute_start,
+    date_trunc('second', log.timestamp) AS second_start,
     log.service,
-    log.level,
+    ${rawLevelExpression} AS level,
     count(*)::bigint AS log_count
   FROM logs AS log
   CROSS JOIN bounds
   WHERE log.timestamp >= bounds.since_time
-    AND log.timestamp < bounds.until_time
-    AND (
-      bounds.full_start >= bounds.full_end
-      OR log.timestamp < bounds.full_start
-      OR log.timestamp >= bounds.full_end
+    AND log.timestamp < LEAST(
+      bounds.full_start,
+      bounds.until_time
     )${rawDimensionSql}
   GROUP BY
-    date_trunc('minute', log.timestamp),
+    date_trunc('second', log.timestamp),
+    log.service${rawLevelGroupSql}
+
+  UNION ALL
+
+  SELECT
+    date_trunc('second', log.timestamp) AS second_start,
     log.service,
-    log.level
+    ${rawLevelExpression} AS level,
+    count(*)::bigint AS log_count
+  FROM logs AS log
+  CROSS JOIN bounds
+  WHERE bounds.full_start <= bounds.full_end
+    AND log.timestamp >= GREATEST(
+      bounds.full_end,
+      bounds.since_time
+    )
+    AND log.timestamp < bounds.until_time${rawDimensionSql}
+  GROUP BY
+    date_trunc('second', log.timestamp),
+    log.service${rawLevelGroupSql}
 ),
 bucketed AS (
   SELECT
     date_bin(
       ${bucketParameter}::interval,
-      minute_start,
+      second_start,
       TIMESTAMPTZ '1970-01-01 00:00:00+00'
     ) AS bucket_start,
     ${groupExpression} AS group_value,
     sum(log_count)::bigint AS log_count
-  FROM minute_counts
+  FROM second_counts
   GROUP BY bucket_start, group_value
 )
 SELECT

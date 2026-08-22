@@ -81,6 +81,31 @@ import type {
         const attributeFilter
         of filters.attributeFilters
       ) {
+        if (
+          attributeFilter.key ===
+          "request_id" ||
+          attributeFilter.key ===
+          "user_id"
+        ) {
+          const parameter =
+            addSqlParameter(
+              values,
+              attributeFilter.value,
+            );
+
+          const keyExpression =
+            attributeFilter.key ===
+              "request_id"
+              ? "'request_id'"
+              : "'user_id'";
+
+          conditions.push(
+            `attributes_normalized ->> ${keyExpression} = ${parameter}`,
+          );
+
+          continue;
+        }
+
         const containmentValue =
           buildAttributeContainmentValue(
             attributeFilter.key,
@@ -94,7 +119,7 @@ import type {
           );
       
         conditions.push(
-          `attributes_normalized @> ${parameter}::jsonb`,
+          `(attributes_normalized - 'request_id' - 'user_id') @> ${parameter}::jsonb`,
         );
       }
       

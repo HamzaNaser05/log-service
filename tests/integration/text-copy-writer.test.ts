@@ -65,7 +65,7 @@ beforeAll(
 beforeEach(
   async () => {
     await getPool().query(
-      "TRUNCATE TABLE logs, log_minute_rollups RESTART IDENTITY",
+      "TRUNCATE TABLE logs, log_second_rollups RESTART IDENTITY",
     );
   },
 );
@@ -217,14 +217,14 @@ describe(
               log_count: string;
             }>(
               `
-                SELECT log_count::text
-                FROM log_minute_rollups
-                WHERE minute_start =
-                  '2026-08-09T12:34:00Z'
+                SELECT error_count::text
+                  AS log_count
+                FROM log_second_rollups
+                WHERE second_start =
+                  '2026-08-09T12:34:56Z'
                   ::timestamptz
                   AND service =
                     'text-copy-test'
-                  AND level = 'error'
               `,
             );
 
@@ -235,6 +235,7 @@ describe(
             log_count: "1",
           },
         ]);
+
       },
     );
 
@@ -315,7 +316,7 @@ describe(
             }>(
               `
                 SELECT count(*)
-                FROM log_minute_rollups
+                FROM log_second_rollups
                 WHERE service =
                   'rollback-test'
               `,

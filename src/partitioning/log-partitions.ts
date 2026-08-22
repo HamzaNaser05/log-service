@@ -62,17 +62,14 @@ import type {
     const day =
       startOfUtcDay(date);
   
-    const partitionName =
-      logPartitionNameForDay(day);
-  
-    if (
-      await logPartitionExists(
-        client,
-        partitionName,
-      )
-    ) {
-      return false;
-    }
+  const partitionName =
+    logPartitionNameForDay(day);
+
+  const alreadyExists =
+    await logPartitionExists(
+      client,
+      partitionName,
+    );
   
     const nextDay =
       addUtcDays(day, 1);
@@ -90,6 +87,7 @@ import type {
      * dates. No user input is inserted
      * into this SQL text.
      */
+  if (!alreadyExists) {
     await client.query(
       `
         CREATE TABLE ${partitionName}
@@ -99,9 +97,30 @@ import type {
           TO ('${end}')
       `,
     );
-  
-    return true;
   }
+
+  /*
+   * Daily log partitions are append-only
+   * until retention drops or trims them.
+   * PostgreSQL's default insert-triggered
+   * vacuum cadence repeatedly scanned the
+   * hot partition during load tests despite
+   * there being no dead tuples. Disable only
+   * insert-triggered vacuum; dead-tuple and
+   * anti-wraparound vacuum remain available,
+   * and autoanalyze remains enabled.
+   */
+  await client.query(
+    `
+      ALTER TABLE ${partitionName}
+      SET (
+        autovacuum_vacuum_insert_threshold = -1
+      )
+    `,
+  );
+
+  return !alreadyExists;
+}
   
   export async function ensureLogPartitionWindow(
     client: PoolClient,

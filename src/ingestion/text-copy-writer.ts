@@ -24,13 +24,13 @@ import {
   } from "./text-copy.js";
 
   import {
-    upsertMinuteRollups,
-  } from "./log-minute-rollup.js";
+    upsertSecondRollups,
+  } from "./log-second-rollup.js";
   
   import type {
     LogBatchWriter,
   } from "./log-batch-writer.js";
-  
+
   const COPY_LOGS_SQL = `
     COPY logs (
       timestamp,
@@ -129,7 +129,7 @@ import {
   
       const client =
         await this.getClient();
-  
+
       let transactionStarted =
         false;
   
@@ -157,7 +157,7 @@ import {
           copyStream,
         );
 
-        await upsertMinuteRollups(
+        await upsertSecondRollups(
           client,
           logs,
           this.writerShard,

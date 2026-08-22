@@ -105,7 +105,11 @@ describe(
                     .toContain("service");
 
                 expect(query.text).toContain(
-                    "FROM log_minute_rollups AS rollup",
+                    "FROM log_second_rollups AS rollup",
+                );
+
+                expect(query.text).not.toContain(
+                    "OR log.timestamp",
                 );
             },
         );
@@ -155,8 +159,9 @@ describe(
                 );
 
                 expect(query.text).not.toContain(
-                    "log_minute_rollups",
+                    "log_second_rollups",
                 );
+
             },
         );
     },

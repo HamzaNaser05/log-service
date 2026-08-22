@@ -2,176 +2,144 @@
 
 ## Test environment
 
-Measurements in this document were made on 2026-08-22 with the same Compose
-limits used by the assignment:
+Measurements were taken on 2026-08-22 with the assignment's Compose limits:
 
 | Container | Limit |
 |---|---:|
 | Application | 0.5 CPU, 256 MiB RAM |
 | PostgreSQL 16 | 1 CPU, 1 GiB RAM |
 
-PostgreSQL remained the durable source of truth. These settings were left on:
+PostgreSQL remained the durable source of truth. `fsync`,
+`synchronous_commit`, and `full_page_writes` stayed enabled. An ingest request
+was never acknowledged before both raw logs and their rollups committed.
 
-```text
-fsync = on
-synchronous_commit = on
-full_page_writes = on
-```
+## Workload
 
-No successful HTTP response was sent before its raw-log COPY and minute-rollup
-update committed.
+The benchmark used the stock `performance.js` from
+`https://github.com/HasanZawahra/load-generator`:
 
-## Exact shared-generator workload
+- batch size 33 and 70 maximum ingest VUs;
+- one aggregation request per second;
+- concurrent read-after-write checks;
+- `bucket=1m&group_by=service` for the primary aggregation;
+- 12 services, 4 levels, 6 regions, and 4 attributes;
+- random high-cardinality `user_id` and `request_id` values.
 
-The regression used
-`https://github.com/HasanZawahra/load-generator`, specifically its
-`performance.js` workload:
+All four scenarios ran sequentially against one continuously growing database.
+The clean load started at zero rows; the breakpoint run finished at 3,350,702
+raw rows.
 
-- HTTP batch size: 33 logs
-- ingestion target: 15,000 logs/sec
-- maximum ingestion VUs: 70
-- aggregation: 1 request/sec
-- read-after-write: 23 iterations/sec at the 15k target
-- aggregation query: `bucket=1m&group_by=service`
-- log dimensions: 12 services, 4 levels, 6 regions, and 4 attributes
-- high-cardinality attributes: random `user_id` and `request_id`
+## Results
 
-The full grader also runs load, stress, spike, and breakpoint scenarios. The
-local optimization loop used shorter 20- and 30-second runs so variants could
-be compared quickly. Those short results must not be read as a new official
-four-scenario score.
+| Scenario | Accepted | Logs/sec | Ingest p95 | Aggregate p95 | Read p95 | Visibility | Errors |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Load, 120 s at 15k offered | 724,317 | 6,030.14 | 541.81 ms | 91.34 ms | 125.71 ms | 100% | 0 |
+| Stress, 15k to 30k | 833,448 | 5,535.76 | 637.51 ms | 368.04 ms | 150.94 ms | 100% | 0 |
+| Spike, 7.5k to 30k to 7.5k | 579,744 | 5,784.54 | 538.66 ms | 363.26 ms | 118.04 ms | 100% | 0 |
+| Breakpoint, 15k to 45k | 641,652 | 5,318.89 | 607.47 ms | 427.73 ms | 178.28 ms | 100% | 0 |
 
-## Baseline from the grading report
+The generator reached its 70-VU cap, so accepted throughput was capacity-limited
+and lower than offered load. The service returned no failed requests and
+maintained complete read-after-write visibility in the selected final runs.
 
-The submitted commit's official load scenario reported:
+After stress, at 1,563,959 raw rows:
 
-| Metric | Baseline |
+| Measurement | Value |
 |---|---:|
-| Accepted logs | 544,896 |
-| Throughput | 4,540.8 logs/sec |
-| Ingestion p95 | 801.3 ms |
-| Aggregation p95 | 870.9 ms |
-| HTTP errors | 0 |
+| Application memory | 41.62 MiB |
+| PostgreSQL memory | 286.7 MiB |
+| Second-rollup rows | 3,384 |
+| Second-rollup total size | 744 KiB |
+| Hot-partition attribute GIN | 8.0 MiB |
 
-The stress, spike, and breakpoint scenarios fell to roughly 3.5k–4.3k
-logs/sec, and the worst aggregation p95 reached 2.64 seconds. The query score
-was zero because its sustained aggregation p95 threshold is 400 ms.
+After all scenarios PostgreSQL used 479.1 MiB. The application remained far
+below its 256 MiB limit.
 
-## Final local regression
+## Baseline comparison
 
-The final indexed design uses two text-COPY lanes, a 50 ms batching window, a
-2,000-log immediate-flush threshold, and transactional minute rollups.
+The most recent official baseline reported 555,753 accepted load logs,
+4,631.28 logs/sec, 840.23 ms ingest p95, and 1,129.97 ms aggregate p95. Its
+stress throughput was 3,958.46 logs/sec with 2,923 ms aggregate p95. The final
+local design improved load throughput by about 30%, load aggregation by about
+12x, and stress aggregation by about 8x. A new official run is still required
+because host behavior varies.
 
-A clean 30-second exact-workload run produced:
+## Bottlenecks found
 
-| Metric | Result |
-|---|---:|
-| Accepted logs | 194,964 |
-| Throughput | 6,433.39 logs/sec |
-| Ingestion p95 | 479.60 ms |
-| Aggregation p95 | 205.11 ms |
-| Read query p95 | 186.36 ms |
-| Read-after-write success | 100% |
-| HTTP errors | 0 |
+1. Raw-table aggregation repeatedly grouped a growing current-day partition.
+2. One row per second/service/level caused four times more rollup writes and
+   scans than one row containing four fixed level counters.
+3. A full JSONB GIN was dominated by unique `request_id` and `user_id` values.
+4. Frequent requested checkpoints generated avoidable write pressure.
+5. PostgreSQL's insert-triggered autovacuum scanned the append-only hot
+   partition even though it contained no dead tuples; one such scan caused an
+   8.26-second spike outlier during an intermediate run.
+6. Additional writer lanes competed with the primary aggregation on the
+   one-CPU PostgreSQL container.
+7. Application-built binary COPY payloads cost more CPU than text COPY in the
+   0.5-CPU application container.
 
-A second 30-second run started with those rows still present:
+## Optimizations retained
 
-| Metric | Result |
-|---|---:|
-| Final dataset | 391,864 logs |
-| Dataset size | 196 MiB including partition indexes |
-| Rollup size | 192 rows / 184 KiB |
-| Throughput | 6,414.05 logs/sec |
-| Ingestion p95 | 528.96 ms |
-| Aggregation p95 | 305.53 ms |
-| Read-after-write success | 100% |
-| HTTP errors | 0 |
+- Text `COPY FROM STDIN` with a bounded, 50 ms microbatch queue.
+- One measured writer by default; writer-sharded rollup keys retain safe
+  configurability without making extra concurrency the default.
+- Transactional second rollups with one row per second/service/shard and four
+  level counters.
+- Exact hybrid aggregation: rollups for complete seconds and two independent
+  raw edge scans for fractional boundary seconds.
+- A dedicated one-connection aggregate pool with a 30-second queue timeout.
+- Raw fallback for message- and attribute-filtered aggregations.
+- Expression GIN over searchable attributes excluding `request_id` and
+  `user_id`; those two keys use parameterized JSON extraction.
+- Trigram GIN retained for required case-insensitive message substrings.
+- `max_wal_size=4GB`, 15-minute checkpoint timeout, and 0.9 completion target;
+  durability settings remain on.
+- Insert-triggered vacuum disabled only for append-only daily partitions.
+  Dead-tuple vacuum, autoanalyze, and anti-wraparound protection remain.
+- Rollup deletion and exact cutoff-second reconstruction during retention.
 
-A live resource snapshot during the second run was:
+## Rejected experiments
 
-| Container | CPU | Memory |
-|---|---:|---:|
-| Application | 36.18% | 40.98 MiB |
-| PostgreSQL | 79.62% | 250.6 MiB |
+| Experiment | Decision |
+|---|---|
+| Remove the message GIN | Faster writes, rejected because broad substring queries regress |
+| Remove all attribute indexing | Faster writes, rejected because arbitrary attribute queries regress |
+| Two or three synchronous writers | Rejected after reducing aggregation headroom on one PostgreSQL CPU |
+| Additional synchronous 10-second hierarchy | Rejected because extra writes made stress aggregation much worse |
+| Deferred rollup maintenance | Correct and reliable, but slower than the compact synchronous design |
+| Full GIN including random IDs | Rejected due to large high-cardinality write amplification |
 
-This is a meaningful improvement over the official baseline and puts the
-primary aggregation back under the query-score threshold. It does **not** meet
-the required 15,000 logs/sec target; a full official rerun is still required.
+## Reproduction
 
-## Experiments and decisions
-
-Short runs were used only for relative comparison. The most useful results
-were:
-
-| Variant | Throughput | Aggregation p95 | Decision |
-|---|---:|---:|---|
-| Original indexed raw aggregation | 4,540.8/s | 870.9 ms | Replace aggregation path |
-| Rollup, one writer, indexed | 4,774/s | 377 ms | Keep rollup |
-| No message GIN | 5,190/s | 176 ms | Reject: substring queries regress at scale |
-| No GIN indexes | 5,390/s | 214 ms | Reject: violates query-performance intent |
-| Two writers, no GIN | 6,653/s | 191 ms | Keep two-writer model |
-| Three writers, no GIN | 6,563/s | 289 ms | Reject: no gain, less query headroom |
-| Durable staging prototype | 6,511/s | 182 ms | Reject: complexity without useful gain |
-| Final indexed, two writers | 6,433/s | 205 ms | Selected |
-
-The text-COPY encoder was retained because the indexed comparison was
-materially faster than the application-heavy binary encoder in this 0.5-CPU
-container. PostgreSQL had more CPU headroom than Node during that comparison.
-
-## Bottlenecks discovered
-
-1. Raw aggregation repeatedly grouped an ever-growing current-day partition.
-2. One serial writer left PostgreSQL I/O overlap on the table.
-3. Fastify info-level access logs emitted two JSON lines per request and spent
-   part of the small application CPU budget on benchmark noise.
-4. The binary encoder allocated many small Buffers and reparsed timestamps.
-5. Attribute and message GIN indexes have real write cost, but removing them
-   only produced a modest short-run gain and made required query patterns worse.
-6. PostgreSQL was the dominant resource in the final indexed run.
-
-## Optimizations applied
-
-- Transactional minute counts grouped by service, level, and writer shard.
-- Exact hybrid aggregation: rollups for complete minutes and raw scans for only
-  the partial range edges.
-- Raw fallback for `q` and attribute aggregation filters.
-- Two leased COPY connections with a queue-wide concurrency bound of two.
-- Writer-sharded rollup primary key to avoid hot-row contention.
-- 50 ms / 2,000-log microbatch calibration with a 5,000-log hard maximum.
-- One text-COPY payload allocation per microbatch.
-- Reuse of the timestamp epoch computed during validation.
-- Warn-level production logging; failures remain logged, access noise does not.
-- Rollup cleanup and cutoff-minute reconstruction in retention maintenance.
-
-## How to reproduce
-
-Start the service from a clean checkout:
+Start a clean stack:
 
 ```bash
-docker compose up --build
+docker compose down -v
+docker compose up --build -d --wait
 ```
 
-Then run the shared generator's `performance.js` with:
+Run the generator's unmodified `performance.js` once for each stock scenario,
+using:
 
 ```text
 BASE_URL=http://host.docker.internal:8080
-SCENARIO=load
 BATCH=33
 MAX_VUS=70
-TARGET_LOG_RATE=15000
-DURATION_SEC=30
+SCENARIO=load | stress | spike | breakpoint
 ```
 
-For a submission-quality result, omit the duration/rate overrides and run all
-four stock scenarios against one continuously growing database. Record the
-generator summary and `docker stats` output.
+Run the scenarios in that order without truncating the database. Capture each
+k6 summary plus `docker stats --no-stream` and PostgreSQL relation statistics.
 
 ## Remaining limitations
 
-- The measured ingestion rate remains below 15k logs/sec.
-- The final result is a short regression, not a complete official load/stress/
-  spike/breakpoint rerun.
-- Attribute- or message-filtered aggregation cannot use the dimension-limited
-  rollup and therefore depends on raw-table indexes.
-- GIN maintenance is a deliberate write/read trade-off and is expected to be a
-  major cost at multi-million-row scale.
+- Measured ingestion is reliable but remains below the 15,000 logs/sec target.
+- Breakpoint aggregation p95 was 428 ms when offered load reached 45,000
+  logs/sec; the required sustained and spike runs remained below 400 ms.
+- Message- or attribute-filtered aggregation reads indexed raw logs because
+  those dimensions are intentionally absent from the compact rollup.
+- Broad `request_id`-only or `user_id`-only searches can be slower than other
+  attribute filters because those keys are excluded from the expression GIN.
+- The cutoff-day retention delete can create temporary bloat until normal
+  dead-tuple vacuum processes that partition.

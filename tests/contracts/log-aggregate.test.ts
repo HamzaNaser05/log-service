@@ -66,7 +66,7 @@ import type {
   
   beforeEach(async () => {
     await getResources().pool.query(
-      "TRUNCATE TABLE logs, log_minute_rollups RESTART IDENTITY",
+      "TRUNCATE TABLE logs, log_second_rollups RESTART IDENTITY",
     );
   });
   
@@ -428,7 +428,7 @@ import type {
       );
 
       test(
-        "combines rollups with exact partial-minute boundaries",
+        "combines rollups with exact partial-second boundaries",
         async () => {
           const {
             pool,
@@ -440,7 +440,7 @@ import type {
             [
               {
                 timestamp:
-                  "2026-08-09T09:00:10Z",
+                  "2026-08-09T09:00:20.100Z",
                 level: "info",
                 service: "edge-test",
                 message: "excluded before since",
@@ -448,7 +448,7 @@ import type {
               },
               {
                 timestamp:
-                  "2026-08-09T09:00:30Z",
+                  "2026-08-09T09:00:20.500Z",
                 level: "info",
                 service: "edge-test",
                 message: "included first edge",
@@ -464,7 +464,7 @@ import type {
               },
               {
                 timestamp:
-                  "2026-08-09T09:02:10Z",
+                  "2026-08-09T09:02:20.100Z",
                 level: "info",
                 service: "edge-test",
                 message: "included last edge",
@@ -472,7 +472,7 @@ import type {
               },
               {
                 timestamp:
-                  "2026-08-09T09:02:30Z",
+                  "2026-08-09T09:02:20.300Z",
                 level: "info",
                 service: "edge-test",
                 message: "excluded after until",
@@ -486,8 +486,8 @@ import type {
               method: "GET",
               url:
                 "/logs/aggregate" +
-                "?since=2026-08-09T09%3A00%3A20Z" +
-                "&until=2026-08-09T09%3A02%3A20Z" +
+                "?since=2026-08-09T09%3A00%3A20.250Z" +
+                "&until=2026-08-09T09%3A02%3A20.250Z" +
                 "&bucket=1m" +
                 "&service=edge-test",
             });
@@ -517,6 +517,82 @@ import type {
                   "2026-08-09T09:02:00Z",
                 group: null,
                 count: 1,
+              },
+            ],
+          });
+        },
+      );
+
+      test(
+        "keeps both raw edges when a short range crosses a second boundary",
+        async () => {
+          const {
+            pool,
+            server,
+          } = getResources();
+
+          await insertLogs(
+            pool,
+            [
+              {
+                timestamp:
+                  "2026-08-09T09:00:00.100Z",
+                level: "info",
+                service: "short-edge-test",
+                message: "excluded before since",
+                attributes: {},
+              },
+              {
+                timestamp:
+                  "2026-08-09T09:00:00.500Z",
+                level: "info",
+                service: "short-edge-test",
+                message: "first edge",
+                attributes: {},
+              },
+              {
+                timestamp:
+                  "2026-08-09T09:00:01.100Z",
+                level: "info",
+                service: "short-edge-test",
+                message: "second edge",
+                attributes: {},
+              },
+              {
+                timestamp:
+                  "2026-08-09T09:00:01.500Z",
+                level: "info",
+                service: "short-edge-test",
+                message: "excluded after until",
+                attributes: {},
+              },
+            ],
+          );
+
+          const response =
+            await server.inject({
+              method: "GET",
+              url:
+                "/logs/aggregate" +
+                "?since=2026-08-09T09%3A00%3A00.250Z" +
+                "&until=2026-08-09T09%3A00%3A01.250Z" +
+                "&bucket=1m" +
+                "&service=short-edge-test",
+            });
+
+          expect(
+            response.statusCode,
+          ).toBe(200);
+
+          expect(
+            response.json(),
+          ).toEqual({
+            buckets: [
+              {
+                start:
+                  "2026-08-09T09:00:00Z",
+                group: null,
+                count: 2,
               },
             ],
           });

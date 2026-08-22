@@ -118,11 +118,11 @@ import {
           );
   
           expect(query.text).toContain(
-            "attributes_normalized @> $5::jsonb",
+            "(attributes_normalized - 'request_id' - 'user_id') @> $5::jsonb",
           );
   
           expect(query.text).toContain(
-            "attributes_normalized @> $6::jsonb",
+            "(attributes_normalized - 'request_id' - 'user_id') @> $6::jsonb",
           );
   
           expect(query.text).toContain(
@@ -206,7 +206,7 @@ import {
             );
   
           expect(query.text).toContain(
-            "attributes_normalized @> $1::jsonb",
+            "(attributes_normalized - 'request_id' - 'user_id') @> $1::jsonb",
           );
   
           expect(
@@ -251,6 +251,58 @@ import {
           expect(
             query.values[1],
           ).toBe(101);
+        },
+      );
+
+      test(
+        "uses a parameterized fallback for request_id",
+        () => {
+          const query =
+            buildLogSelectQuery(
+              createFilters({
+                attributeFilters: [
+                  {
+                    key: "request_id",
+                    value: "req-42",
+                  },
+                ],
+              }),
+            );
+
+          expect(query.text).toContain(
+            "attributes_normalized ->> 'request_id' = $1",
+          );
+
+          expect(query.values).toEqual([
+            "req-42",
+            101,
+          ]);
+        },
+      );
+
+      test(
+        "uses a parameterized fallback for user_id",
+        () => {
+          const query =
+            buildLogSelectQuery(
+              createFilters({
+                attributeFilters: [
+                  {
+                    key: "user_id",
+                    value: "42",
+                  },
+                ],
+              }),
+            );
+
+          expect(query.text).toContain(
+            "attributes_normalized ->> 'user_id' = $1",
+          );
+
+          expect(query.values).toEqual([
+            "42",
+            101,
+          ]);
         },
       );
   

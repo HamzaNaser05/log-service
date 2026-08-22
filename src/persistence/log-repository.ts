@@ -12,8 +12,8 @@ import {
 } from "../domain/log-attributes.js";
 
 import {
-  upsertMinuteRollups,
-} from "../ingestion/log-minute-rollup.js";
+  upsertSecondRollups,
+} from "../ingestion/log-second-rollup.js";
 
 async function insertLog(
   client: PoolClient,
@@ -78,7 +78,7 @@ export async function insertLogs(
       await insertLog(client, log);
     }
 
-    await upsertMinuteRollups(
+    await upsertSecondRollups(
       client,
       logs,
     );

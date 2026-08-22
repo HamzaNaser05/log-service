@@ -40,6 +40,8 @@ export function buildServer(
 
   corsOrigins:
     readonly string[] = [],
+
+  aggregatePool: Pool = pool,
 ): FastifyInstance {
   const server =
     Fastify({
@@ -91,7 +93,7 @@ export function buildServer(
 
   registerLogAggregateRoute(
     server,
-    pool,
+    aggregatePool,
   );
 
   server.addHook(

@@ -62,7 +62,7 @@ import type {
   
   beforeEach(async () => {
     await getResources().pool.query(
-      "TRUNCATE TABLE logs, log_minute_rollups RESTART IDENTITY",
+      "TRUNCATE TABLE logs, log_second_rollups RESTART IDENTITY",
     );
   });
   

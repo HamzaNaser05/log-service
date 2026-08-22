@@ -40,7 +40,7 @@ import type {
   
   beforeEach(async () => {
     await getPool().query(
-      "TRUNCATE TABLE logs, log_minute_rollups RESTART IDENTITY",
+      "TRUNCATE TABLE logs, log_second_rollups RESTART IDENTITY",
     );
   });
   
