@@ -20,8 +20,12 @@ import {
   } from "../domain/log.js";
   
   import {
-    encodeLogsForBinaryCopy,
-  } from "./binary-copy.js";
+    encodeLogsForTextCopy,
+  } from "./text-copy.js";
+
+  import {
+    upsertMinuteRollups,
+  } from "./log-minute-rollup.js";
   
   import type {
     LogBatchWriter,
@@ -37,12 +41,10 @@ import {
       attributes_normalized
     )
     FROM STDIN
-    WITH (
-      FORMAT binary
-    )
+    WITH (FORMAT text)
   `;
   
-  export class BinaryCopyLogWriter
+  export class TextCopyLogWriter
   implements LogBatchWriter {
     private client:
       PoolClient | null = null;
@@ -51,13 +53,14 @@ import {
   
     public constructor(
       private readonly pool: Pool,
+      private readonly writerShard = 0,
     ) {}
   
     public async start():
       Promise<void> {
       if (this.closed) {
         throw new Error(
-          "Binary COPY writer is closed",
+          "Text COPY writer is closed",
         );
       }
   
@@ -80,7 +83,7 @@ import {
   
       if (client === null) {
         throw new Error(
-          "Binary COPY writer failed to acquire a PostgreSQL client",
+          "Text COPY writer failed to acquire a PostgreSQL client",
         );
       }
   
@@ -111,7 +114,7 @@ import {
   
       if (this.closed) {
         throw new Error(
-          "Binary COPY writer is closed",
+          "Text COPY writer is closed",
         );
       }
   
@@ -120,7 +123,7 @@ import {
        * transaction.
        */
       const payload =
-        encodeLogsForBinaryCopy(
+        encodeLogsForTextCopy(
           logs,
         );
   
@@ -153,6 +156,12 @@ import {
           source,
           copyStream,
         );
+
+        await upsertMinuteRollups(
+          client,
+          logs,
+          this.writerShard,
+        );
   
         await client.query(
           "COMMIT",
@@ -172,7 +181,7 @@ import {
               unknown
           ) {
             console.error(
-              "Binary COPY rollback failed",
+              "Text COPY rollback failed",
               rollbackError,
             );
   

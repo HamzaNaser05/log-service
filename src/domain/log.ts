@@ -16,6 +16,7 @@ export type LogAttributes = Record<
 
 export type ValidatedLogEntry = {
     timestamp: string;
+    epochMilliseconds?: number;
     level: LogLevel;
     service: string;
     message: string;

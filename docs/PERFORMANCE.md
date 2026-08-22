@@ -1,65 +1,16 @@
 # Performance Report
 
-## 1. Objective
+## Test environment
 
-The log service was designed to support high-throughput structured log ingestion while preserving:
+Measurements in this document were made on 2026-08-22 with the same Compose
+limits used by the assignment:
 
-- PostgreSQL durability
-- bounded application memory
-- deterministic querying
-- concurrent aggregation
-- database-backed correctness
-- graceful failure behavior
-
-The primary performance target was:
-
-```text
->= 15,000 logs/second
-```
-
-while operating under constrained resources:
-
-| Component | Resource Limit |
+| Container | Limit |
 |---|---:|
-| Application | 0.5 CPU / 256 MB RAM |
-| PostgreSQL | 1 CPU / 1 GB RAM |
+| Application | 0.5 CPU, 256 MiB RAM |
+| PostgreSQL 16 | 1 CPU, 1 GiB RAM |
 
-A second important requirement was:
-
-```text
-Aggregation p95 < 1 second
-while ingestion is active
-```
-
-Performance tuning was performed incrementally.
-
-Only one major variable was changed at a time whenever possible.
-
----
-
-# 2. Test Environment
-
-The benchmark environment used Docker Compose.
-
-Application:
-
-```text
-Node.js 22
-Fastify
-TypeScript
-0.5 CPU
-256 MB RAM
-```
-
-Database:
-
-```text
-PostgreSQL 16
-1 CPU
-1 GB RAM
-```
-
-PostgreSQL durability remained enabled:
+PostgreSQL remained the durable source of truth. These settings were left on:
 
 ```text
 fsync = on
@@ -67,632 +18,160 @@ synchronous_commit = on
 full_page_writes = on
 ```
 
-The performance target was therefore not achieved by disabling PostgreSQL durability guarantees.
+No successful HTTP response was sent before its raw-log COPY and minute-rollup
+update committed.
 
----
+## Exact shared-generator workload
 
-# 3. Benchmark Workload
+The regression used
+`https://github.com/HasanZawahra/load-generator`, specifically its
+`performance.js` workload:
 
-The primary tuning workload used:
+- HTTP batch size: 33 logs
+- ingestion target: 15,000 logs/sec
+- maximum ingestion VUs: 70
+- aggregation: 1 request/sec
+- read-after-write: 23 iterations/sec at the 15k target
+- aggregation query: `bucket=1m&group_by=service`
+- log dimensions: 12 services, 4 levels, 6 regions, and 4 attributes
+- high-cardinality attributes: random `user_id` and `request_id`
 
-```text
-Initial logs:       100,000
-HTTP batch size:    100 logs
-Query iterations:   100
-Mixed-load logs:    20,000
-```
+The full grader also runs load, stress, spike, and breakpoint scenarios. The
+local optimization loop used shorter 20- and 30-second runs so variants could
+be compared quickly. Those short results must not be read as a new official
+four-scenario score.
 
-The workload measured:
+## Baseline from the grading report
 
-- ingestion throughput
-- ingestion batch p50
-- ingestion batch p95
-- ingestion batch p99
-- failed batches
-- service query latency
-- literal message search latency
-- aggregation latency
-- ingestion throughput while reads were active
+The submitted commit's official load scenario reported:
 
-The same benchmark harness was reused across optimization experiments.
+| Metric | Baseline |
+|---|---:|
+| Accepted logs | 544,896 |
+| Throughput | 4,540.8 logs/sec |
+| Ingestion p95 | 801.3 ms |
+| Aggregation p95 | 870.9 ms |
+| HTTP errors | 0 |
 
----
+The stress, spike, and breakpoint scenarios fell to roughly 3.5k–4.3k
+logs/sec, and the worst aggregation p95 reached 2.64 seconds. The query score
+was zero because its sustained aggregation p95 threshold is 400 ms.
 
-# 4. Initial Architecture
+## Final local regression
 
-The first correct ingestion implementation used:
+The final indexed design uses two text-COPY lanes, a 50 ms batching window, a
+2,000-log immediate-flush threshold, and transactional minute rollups.
 
-```text
-HTTP Batch
-    ↓
-Validation
-    ↓
-BEGIN
-    ↓
-INSERT log #1
-INSERT log #2
-INSERT log #3
-...
-INSERT log #N
-    ↓
-COMMIT
-```
-
-Each row required an individual PostgreSQL statement.
-
-This architecture was intentionally implemented first because it provided a simple correctness baseline.
-
----
-
-# 5. Initial Performance Baseline
-
-An early 10,000-log baseline using transactional per-row INSERTs produced approximately:
-
-```text
-1,830.96 logs/sec
-```
-
-with:
+A clean 30-second exact-workload run produced:
 
 | Metric | Result |
 |---|---:|
-| Accepted logs | 10,000 |
-| Rejected logs | 0 |
-| Failed batches | 0 |
-| Ingestion p50 | 161.97 ms |
-| Ingestion p95 | 608.38 ms |
-| Ingestion p99 | 693.95 ms |
+| Accepted logs | 194,964 |
+| Throughput | 6,433.39 logs/sec |
+| Ingestion p95 | 479.60 ms |
+| Aggregation p95 | 205.11 ms |
+| Read query p95 | 186.36 ms |
+| Read-after-write success | 100% |
+| HTTP errors | 0 |
 
-This established that the system was correct, but the ingestion path was far below the required throughput.
-
----
-
-# 6. Binary COPY Optimization
-
-The ingestion architecture was redesigned around:
-
-```text
-HTTP Requests
-      ↓
-Bounded Queue
-      ↓
-Micro-batching
-      ↓
-Dedicated PostgreSQL Writer
-      ↓
-COPY FROM STDIN
-FORMAT BINARY
-      ↓
-COMMIT
-```
-
-Important properties were preserved:
-
-- requests are not acknowledged before commit
-- failed COPY operations are rolled back
-- affected requests fail together
-- queue capacity is bounded
-- PostgreSQL still generates log IDs
-- timestamp microsecond precision is preserved
-- original JSON attribute types are preserved
-- normalized searchable attributes are preserved
-
----
-
-# 7. Binary COPY Result
-
-A 100,000-log benchmark after introducing Binary COPY produced:
-
-```text
-14,156.79 logs/sec
-```
-
-Results:
+A second 30-second run started with those rows still present:
 
 | Metric | Result |
 |---|---:|
-| Accepted logs | 100,000 |
-| Rejected logs | 0 |
-| Failed batches | 0 |
-| Ingestion p50 | 22.37 ms |
-| Ingestion p95 | 65.15 ms |
-| Ingestion p99 | 99.01 ms |
+| Final dataset | 391,864 logs |
+| Dataset size | 196 MiB including partition indexes |
+| Rollup size | 192 rows / 184 KiB |
+| Throughput | 6,414.05 logs/sec |
+| Ingestion p95 | 528.96 ms |
+| Aggregation p95 | 305.53 ms |
+| Read-after-write success | 100% |
+| HTTP errors | 0 |
 
-This represented a major improvement over the per-row INSERT architecture, but remained slightly below the 15k logs/sec target.
+A live resource snapshot during the second run was:
 
----
+| Container | CPU | Memory |
+|---|---:|---:|
+| Application | 36.18% | 40.98 MiB |
+| PostgreSQL | 79.62% | 250.6 MiB |
 
-# 8. Micro-batch Flush Tuning
+This is a meaningful improvement over the official baseline and puts the
+primary aggregation back under the query-score threshold. It does **not** meet
+the required 15,000 logs/sec target; a full official rerun is still required.
 
-The original queue configuration used the same value for:
+## Experiments and decisions
+
+Short runs were used only for relative comparison. The most useful results
+were:
+
+| Variant | Throughput | Aggregation p95 | Decision |
+|---|---:|---:|---|
+| Original indexed raw aggregation | 4,540.8/s | 870.9 ms | Replace aggregation path |
+| Rollup, one writer, indexed | 4,774/s | 377 ms | Keep rollup |
+| No message GIN | 5,190/s | 176 ms | Reject: substring queries regress at scale |
+| No GIN indexes | 5,390/s | 214 ms | Reject: violates query-performance intent |
+| Two writers, no GIN | 6,653/s | 191 ms | Keep two-writer model |
+| Three writers, no GIN | 6,563/s | 289 ms | Reject: no gain, less query headroom |
+| Durable staging prototype | 6,511/s | 182 ms | Reject: complexity without useful gain |
+| Final indexed, two writers | 6,433/s | 205 ms | Selected |
+
+The text-COPY encoder was retained because the indexed comparison was
+materially faster than the application-heavy binary encoder in this 0.5-CPU
+container. PostgreSQL had more CPU headroom than Node during that comparison.
+
+## Bottlenecks discovered
+
+1. Raw aggregation repeatedly grouped an ever-growing current-day partition.
+2. One serial writer left PostgreSQL I/O overlap on the table.
+3. Fastify info-level access logs emitted two JSON lines per request and spent
+   part of the small application CPU budget on benchmark noise.
+4. The binary encoder allocated many small Buffers and reparsed timestamps.
+5. Attribute and message GIN indexes have real write cost, but removing them
+   only produced a modest short-run gain and made required query patterns worse.
+6. PostgreSQL was the dominant resource in the final indexed run.
+
+## Optimizations applied
+
+- Transactional minute counts grouped by service, level, and writer shard.
+- Exact hybrid aggregation: rollups for complete minutes and raw scans for only
+  the partial range edges.
+- Raw fallback for `q` and attribute aggregation filters.
+- Two leased COPY connections with a queue-wide concurrency bound of two.
+- Writer-sharded rollup primary key to avoid hot-row contention.
+- 50 ms / 2,000-log microbatch calibration with a 5,000-log hard maximum.
+- One text-COPY payload allocation per microbatch.
+- Reuse of the timestamp epoch computed during validation.
+- Warn-level production logging; failures remain logged, access noise does not.
+- Rollup cleanup and cutoff-minute reconstruction in retention maintenance.
+
+## How to reproduce
+
+Start the service from a clean checkout:
+
+```bash
+docker compose up --build
+```
+
+Then run the shared generator's `performance.js` with:
 
 ```text
-when a microbatch should immediately flush
+BASE_URL=http://host.docker.internal:8080
+SCENARIO=load
+BATCH=33
+MAX_VUS=70
+TARGET_LOG_RATE=15000
+DURATION_SEC=30
 ```
 
-and:
-
-```text
-maximum number of logs allowed in a COPY
-```
-
-These concerns were separated.
-
-The tuned configuration became:
-
-```text
-flush threshold = 400 logs
-maximum COPY batch = 1000 logs
-maximum wait = 5 ms
-```
-
-This allowed four concurrent 100-log HTTP batches to trigger a COPY immediately rather than unnecessarily waiting for the timer.
-
-With concurrency 4:
-
-```text
-15,769.89 logs/sec
-```
-
-This was the first run to exceed the required:
-
-```text
-15,000 logs/sec
-```
-
-without changing durability or resource limits.
-
----
-
-# 9. Concurrency Saturation Experiment
-
-Client concurrency was then varied while keeping the server configuration unchanged.
-
-Results:
-
-| Concurrency | Throughput |
-|---:|---:|
-| 4 | 15,769.89 logs/sec |
-| 8 | 15,842.19 logs/sec |
-| 16 | 18,293.47 logs/sec |
-| 32 | **21,335.13 logs/sec** |
-| 64 | 19,059.61 logs/sec |
-
-The saturation curve showed that throughput continued improving until approximately 32 concurrent ingestion clients.
-
-At concurrency 64:
-
-- throughput decreased
-- ingestion latency increased significantly
-- mixed-load latency became worse
-
-Therefore:
-
-```text
-Concurrency 32
-```
-
-was selected as the best observed operating point.
-
-This choice was based on measurement rather than simply selecting the highest possible concurrency.
-
----
-
-# 10. Concurrency 32 Results
-
-The best observed 100,000-log benchmark produced:
-
-```text
-21,335.13 logs/sec
-```
-
-with:
-
-| Metric | Result |
-|---|---:|
-| Accepted logs | 100,000 |
-| Rejected logs | 0 |
-| Failed batches | 0 |
-| Ingestion p50 | 144.29 ms |
-| Ingestion p95 | 217.29 ms |
-| Ingestion p99 | 310.92 ms |
-
-Read performance after ingestion:
-
-| Query | p95 |
-|---|---:|
-| Service query | 62.46 ms |
-| Literal substring search | 111.35 ms |
-| Aggregation | 121.07 ms |
-
----
-
-# 11. Mixed Workload
-
-At the best observed concurrency-32 run, ingestion continued while queries and aggregation were executed.
-
-Mixed workload results:
-
-| Metric | Result |
-|---|---:|
-| Ingestion throughput | 9,259.91 logs/sec |
-| Ingestion p95 | 606.39 ms |
-| Service query p95 | 389.58 ms |
-| Aggregation p95 | **696.81 ms** |
-
-The aggregation requirement remained satisfied:
-
-```text
-696.81 ms < 1000 ms
-```
-
-while ingestion was active.
-
----
-
-# 12. Concurrency 64 Saturation
-
-Increasing concurrency further to 64 produced:
-
-```text
-19,059.61 logs/sec
-```
-
-instead of 21,335.13 logs/sec.
-
-Ingestion p95 increased to:
-
-```text
-564.70 ms
-```
-
-and mixed ingestion p95 increased to:
-
-```text
-1,648.44 ms
-```
-
-This demonstrated that concurrency 64 had moved beyond the useful saturation point.
-
-The system was performing more concurrent work but completing less useful work per second.
-
----
-
-# 13. COPY Batch Size Experiment
-
-The maximum COPY microbatch size was also tested at:
-
-```text
-2000 logs
-```
-
-instead of:
-
-```text
-1000 logs
-```
-
-using concurrency 32.
-
-The result was:
-
-```text
-17,558.23 logs/sec
-```
-
-compared with the best observed:
-
-```text
-21,335.13 logs/sec
-```
-
-for a maximum COPY batch of 1000.
-
-Therefore the larger COPY batch was rejected.
-
-The final selected configuration remained:
-
-```text
-INGESTION_MICROBATCH_FLUSH_LOGS=400
-INGESTION_MICROBATCH_MAX_LOGS=1000
-INGESTION_MICROBATCH_MAX_WAIT_MS=5
-INGESTION_QUEUE_MAX_LOGS=10000
-```
-
----
-
-# 14. Resource Bottleneck Investigation
-
-Container statistics collected during load showed PostgreSQL consuming approximately its full 1 CPU allocation while the Node.js application used very little CPU.
-
-Observed behavior was approximately:
-
-```text
-PostgreSQL ≈ 100% CPU allocation
-Application ≈ low CPU utilization
-```
-
-This indicated that the optimized Node/Fastify ingestion path was no longer the primary bottleneck.
-
-The bottleneck had moved toward PostgreSQL processing.
-
----
-
-# 15. PostgreSQL Diagnostics
-
-Database diagnostics showed:
-
-```text
-shared_buffers = 128 MB
-wal_buffers = 4 MB
-work_mem = 4 MB
-gin_pending_list_limit = 4 MB
-```
-
-A diagnostic snapshot also showed a very high cumulative cache-hit percentage.
-
-The normalized attribute GIN index was actively used by the query workload.
-
-Therefore the GIN index was not removed merely to improve ingestion speed.
-
----
-
-# 16. WAL Investigation
-
-Initial cumulative statistics showed non-zero:
-
-```text
-wal_buffers_full
-```
-
-However, those statistics included many previous benchmark runs.
-
-To avoid drawing the wrong conclusion, PostgreSQL statistics were reset and a clean benchmark was executed.
-
-The clean 100,000-log run produced:
-
-```text
-17,481.22 logs/sec
-```
-
-with:
-
-```text
-100,000 accepted
-0 rejected
-0 failed batches
-```
-
-Clean WAL statistics were:
-
-```text
-WAL generated:     78 MB
-wal_buffers_full:  0
-wal_write:         160
-wal_sync:          145
-```
-
-Because:
-
-```text
-wal_buffers_full = 0
-```
-
-in the isolated run, increasing `wal_buffers` was not justified by the evidence.
-
-No WAL configuration change was retained.
-
----
-
-# 17. Query Index Experiment
-
-A PostgreSQL `pg_trgm` GIN index was experimentally created for:
-
-```sql
-message ILIKE '%payment%'
-```
-
-The query was then examined using:
-
-```sql
-EXPLAIN (ANALYZE, BUFFERS)
-```
-
-PostgreSQL did not select the trigram index for the tested query shape.
-
-Instead, it used the existing ordered index path and returned the first 100 matching rows in approximately:
-
-```text
-0.755 ms execution time
-```
-
-Because the trigram index was not selected and would introduce additional write cost, the experimental index was removed.
-
-No permanent trigram index was added.
-
----
-
-# 18. Final Selected Configuration
-
-The selected ingestion configuration is:
-
-```text
-Bounded queue:              10,000 logs
-Flush threshold:            400 logs
-Maximum COPY microbatch:    1,000 logs
-Maximum wait:               5 ms
-Benchmark concurrency:      32 clients
-```
-
-The architecture uses:
-
-```text
-Binary COPY
-Dedicated writer connection
-Bounded queue
-Micro-batching
-Daily partitions
-GIN attribute indexing
-B-tree service/time indexing
-Keyset pagination
-```
-
----
-
-# 19. Final Performance Summary
-
-## Defensible repeat
-
-A clean repeated benchmark after resetting PostgreSQL statistics produced:
-
-```text
-17,481.22 logs/sec
-```
-
-This is approximately:
-
-```text
-16.5% above the required 15k logs/sec target
-```
-
-with:
-
-```text
-100% accepted
-0 failed batches
-PostgreSQL durability enabled
-```
-
-## Best observed result
-
-The best observed run produced:
-
-```text
-21,335.13 logs/sec
-```
-
-which is approximately:
-
-```text
-42% above the required target
-```
-
-The project distinguishes between:
-
-```text
-clean repeatable result
-```
-
-and:
-
-```text
-best observed result
-```
-
-instead of presenting the highest single measurement as a guaranteed throughput number.
-
----
-
-# 20. Optimization Progression
-
-The overall progression was:
-
-```text
-Per-row INSERT
-      │
-      ▼
-~1.8k logs/sec
-      │
-      ▼
-Binary COPY
-      │
-      ▼
-14.2k logs/sec
-      │
-      ▼
-Separate flush threshold
-      │
-      ▼
-15.8k logs/sec
-      │
-      ▼
-Concurrency tuning
-      │
-      ▼
-18.3k logs/sec
-      │
-      ▼
-Concurrency 32
-      │
-      ▼
-21.3k logs/sec best observed
-```
-
-This is approximately an order-of-magnitude improvement over the original ingestion implementation.
-
----
-
-# 21. Engineering Decisions
-
-Several tempting optimizations were deliberately rejected because measurements did not justify them.
-
-## Rejected: Disable durability
-
-Not used.
-
-```text
-fsync remained ON
-synchronous_commit remained ON
-full_page_writes remained ON
-```
-
-## Rejected: Unlimited queue
-
-Not used.
-
-Memory pressure remains bounded.
-
-## Rejected: Concurrency 64
-
-Higher latency and lower throughput than concurrency 32.
-
-## Rejected: COPY batches of 2000
-
-Lower pure ingestion throughput than batches capped at 1000.
-
-## Rejected: Trigram message index
-
-Not selected by the tested query planner and would add write overhead.
-
-## Rejected: WAL buffer tuning
-
-Clean statistics showed no WAL buffer exhaustion.
-
----
-
-# 22. Conclusions
-
-The final system exceeded the required ingestion throughput while maintaining:
-
-- PostgreSQL durability
-- zero failed batches in benchmark runs
-- bounded ingestion memory
-- real database indexes
-- concurrent querying
-- aggregation p95 below one second under ingestion
-- strict correctness behavior
-
-The most important performance lesson was that optimization was performed using measured bottlenecks.
-
-The project did not assume that:
-
-```text
-more concurrency
-larger batches
-more indexes
-more database memory
-```
-
-would automatically improve performance.
-
-Each major optimization was benchmarked, compared, and either retained or rejected based on evidence.
+For a submission-quality result, omit the duration/rate overrides and run all
+four stock scenarios against one continuously growing database. Record the
+generator summary and `docker stats` output.
+
+## Remaining limitations
+
+- The measured ingestion rate remains below 15k logs/sec.
+- The final result is a short regression, not a complete official load/stress/
+  spike/breakpoint rerun.
+- Attribute- or message-filtered aggregation cannot use the dimension-limited
+  rollup and therefore depends on raw-table indexes.
+- GIN maintenance is a deliberate write/read trade-off and is expected to be a
+  major cost at multi-million-row scale.

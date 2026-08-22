@@ -36,6 +36,9 @@ import type {
   
     deletedCutoffRows:
       number;
+
+    deletedRollupRows:
+      number;
   };
   
   export async function runLogPartitionMaintenance(
@@ -104,6 +107,10 @@ import type {
         deletedCutoffRows:
           retentionResult
             .deletedCutoffRows,
+
+        deletedRollupRows:
+          retentionResult
+            .deletedRollupRows,
       };
     } catch (error: unknown) {
       if (transactionStarted) {
@@ -148,6 +155,9 @@ import type {
                 .length > 0 ||
               result
                 .deletedCutoffRows >
+                0 ||
+              result
+                .deletedRollupRows >
                 0;
   
             if (changed) {

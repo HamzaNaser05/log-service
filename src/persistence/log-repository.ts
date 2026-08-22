@@ -11,6 +11,10 @@ import {
   normalizeLogAttributes,
 } from "../domain/log-attributes.js";
 
+import {
+  upsertMinuteRollups,
+} from "../ingestion/log-minute-rollup.js";
+
 async function insertLog(
   client: PoolClient,
   log: ValidatedLogEntry,
@@ -73,6 +77,11 @@ export async function insertLogs(
     for (const log of logs) {
       await insertLog(client, log);
     }
+
+    await upsertMinuteRollups(
+      client,
+      logs,
+    );
 
     await client.query("COMMIT");
 

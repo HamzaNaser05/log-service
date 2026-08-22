@@ -31,6 +31,8 @@ export type LogIngestionQueueOptions = {
     maxWaitMilliseconds: number;
 
     retryAfterSeconds: number;
+
+    maxConcurrentFlushes?: number;
 };
 
 export type LogEnqueueResult =
@@ -59,9 +61,11 @@ export class LogIngestionQueue {
         NodeJS.Timeout | null =
         null;
 
-    private flushPromise:
-        Promise<void> | null =
-        null;
+    private readonly flushPromises =
+        new Set<Promise<void>>();
+
+    private readonly maxConcurrentFlushes:
+        number;
 
     private closePromise:
         Promise<void> | null =
@@ -157,6 +161,24 @@ export class LogIngestionQueue {
                 "retryAfterSeconds must be a positive integer",
             );
         }
+
+        const maxConcurrentFlushes =
+            options.maxConcurrentFlushes ??
+            1;
+
+        if (
+            maxConcurrentFlushes < 1 ||
+            !Number.isInteger(
+                maxConcurrentFlushes,
+            )
+        ) {
+            throw new Error(
+                "maxConcurrentFlushes must be a positive integer",
+            );
+        }
+
+        this.maxConcurrentFlushes =
+            maxConcurrentFlushes;
 
         this.retryAfterSeconds =
             options
@@ -275,8 +297,8 @@ export class LogIngestionQueue {
     private scheduleFlush():
         void {
         if (
-            this.flushPromise !==
-            null
+            this.flushPromises.size >=
+            this.maxConcurrentFlushes
         ) {
             return;
         }
@@ -287,16 +309,27 @@ export class LogIngestionQueue {
             return;
         }
 
-        if (
-            !this.accepting ||
-            this.queuedLogs >=
-            this.options
-                .flushThresholdLogs
+        while (
+            this.queue.length > 0 &&
+            this.flushPromises.size <
+                this.maxConcurrentFlushes &&
+            (
+                !this.accepting ||
+                this.queuedLogs >=
+                    this.options
+                        .flushThresholdLogs
+            )
         ) {
             this.clearFlushTimer();
 
             this.startFlush();
+        }
 
+        if (
+            this.queue.length === 0 ||
+            this.flushPromises.size >=
+                this.maxConcurrentFlushes
+        ) {
             return;
         }
 
@@ -429,8 +462,8 @@ export class LogIngestionQueue {
     private startFlush():
         void {
         if (
-            this.flushPromise !==
-            null ||
+            this.flushPromises.size >=
+            this.maxConcurrentFlushes ||
             this.queue.length === 0
         ) {
             return;
@@ -446,15 +479,23 @@ export class LogIngestionQueue {
                 requests,
             );
 
-        this.flushPromise =
+        let tracked:
+            Promise<void>;
+
+        tracked =
             running.finally(
                 () => {
-                    this.flushPromise =
-                        null;
+                    this.flushPromises.delete(
+                        tracked,
+                    );
 
                     this.scheduleFlush();
                 },
             );
+
+        this.flushPromises.add(
+            tracked,
+        );
     }
 
     private async drain():
@@ -463,24 +504,22 @@ export class LogIngestionQueue {
 
         while (
             this.queue.length > 0 ||
-            this.flushPromise !==
-            null
+            this.flushPromises.size > 0
         ) {
-            if (
-                this.flushPromise ===
-                null &&
-                this.queue.length > 0
+            while (
+                this.queue.length > 0 &&
+                this.flushPromises.size <
+                    this.maxConcurrentFlushes
             ) {
                 this.startFlush();
             }
 
-            const activeFlush =
-                this.flushPromise;
-
             if (
-                activeFlush !== null
+                this.flushPromises.size > 0
             ) {
-                await activeFlush;
+                await Promise.race(
+                    this.flushPromises,
+                );
             }
         }
     }

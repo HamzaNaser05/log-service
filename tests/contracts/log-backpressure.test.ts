@@ -196,7 +196,7 @@ beforeEach(
     } = getResources();
 
     await pool.query(
-      "TRUNCATE TABLE logs RESTART IDENTITY",
+      "TRUNCATE TABLE logs, log_minute_rollups RESTART IDENTITY",
     );
   },
 );

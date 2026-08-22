@@ -3,7 +3,7 @@ import {
     expect,
     test,
   } from "vitest";
-  
+
   import type {
     LogQueryFilters,
   } from "../../src/domain/log-query.js";
@@ -51,7 +51,7 @@ import {
           );
   
           expect(query.text).toContain(
-            "ORDER BY logs.timestamp DESC, logs.id DESC"          
+            "ORDER BY logs.timestamp DESC, logs.id DESC"
           );
   
           expect(query.text).toContain(
@@ -338,5 +338,3 @@ import {
       );
     },
   );
-
-  

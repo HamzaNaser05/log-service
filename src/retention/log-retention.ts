@@ -19,6 +19,9 @@ import type {
   
     deletedCutoffRows:
       number;
+
+    deletedRollupRows:
+      number;
   };
   
   export async function applyLogRetention(
@@ -108,9 +111,74 @@ import type {
       deletedCutoffRows =
         result.rowCount ?? 0;
     }
+
+    /*
+     * Rollups are not partitioned because
+     * they contain only a handful of rows
+     * per minute. Remove expired minutes,
+     * then rebuild the cutoff minute after
+     * the raw-row delete above so a partial
+     * retention boundary stays exact.
+     */
+    const deletedRollups =
+      await client.query(
+        `
+          DELETE FROM log_minute_rollups
+          WHERE minute_start <=
+            date_trunc(
+              'minute',
+              $1::timestamptz
+            )
+        `,
+        [
+          cutoff.toISOString(),
+        ],
+      );
+
+    await client.query(
+      `
+        INSERT INTO log_minute_rollups (
+          minute_start,
+          service,
+          level,
+          log_count
+        )
+        SELECT
+          date_trunc(
+            'minute',
+            timestamp
+          ),
+          service,
+          level,
+          count(*)
+        FROM logs
+        WHERE timestamp >=
+          date_trunc(
+            'minute',
+            $1::timestamptz
+          )
+          AND timestamp <
+            date_trunc(
+              'minute',
+              $1::timestamptz
+            ) + INTERVAL '1 minute'
+        GROUP BY
+          date_trunc(
+            'minute',
+            timestamp
+          ),
+          service,
+          level
+      `,
+      [
+        cutoff.toISOString(),
+      ],
+    );
   
     return {
       droppedPartitions,
       deletedCutoffRows,
+      deletedRollupRows:
+        deletedRollups.rowCount ?? 0,
     };
   }

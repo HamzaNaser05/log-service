@@ -2,23 +2,20 @@ import { Icon } from "../components/Icons";
 import { PageHeader } from "../components/ui";
 
 const progression = [
-  { label: "Transactional INSERT baseline", value: 1.83, display: "~1.8k", note: "Per-row INSERTs in a transaction", tone: "muted" },
-  { label: "Binary COPY", value: 14.16, display: "~14.2k", note: "Binary COPY + bounded queue", tone: "info" },
-  { label: "Clean tuned run", value: 17.48, display: "~17.5k", note: "Clean measured result", tone: "clean" },
-  { label: "Best observed run", value: 21.34, display: "~21.3k", note: "Best observed result", tone: "best" },
+  { label: "Official submission", value: 4.54, display: "~4.5k", note: "120-second shared-generator load run", tone: "muted" },
+  { label: "Rollup, one writer", value: 4.77, display: "~4.8k", note: "Aggregation moved off the raw table", tone: "info" },
+  { label: "Final clean regression", value: 6.43, display: "~6.4k", note: "Indexed text COPY with two writers", tone: "clean" },
+  { label: "Final populated regression", value: 6.41, display: "~6.4k", note: "391,864 rows after the run", tone: "best" },
 ] as const;
 
-const concurrency = [
-  { clients: 4, throughput: 15.77 },
-  { clients: 8, throughput: 15.84 },
-  { clients: 16, throughput: 18.29 },
-  { clients: 32, throughput: 21.34 },
-  { clients: 64, throughput: 19.06 },
+const datasetRuns = [
+  { logs: 194_964, throughput: 6.43 },
+  { logs: 391_864, throughput: 6.41 },
 ] as const;
 
 export function Performance() {
-  const maxProgression = 22;
-  const maxConcurrency = 22;
+  const maxProgression = 16;
+  const maxThroughput = 7;
 
   return (
     <>
@@ -30,20 +27,20 @@ export function Performance() {
 
       <section className="performance-hero">
         <article className="result-card clean-result">
-          <div className="result-label"><span className="result-icon"><Icon name="check" /></span>Clean measured result</div>
-          <div className="result-value">17.5k <small>logs/sec</small></div>
-          <p>17,481.22 logs/sec in an isolated repeat after resetting PostgreSQL statistics.</p>
-          <span className="target-delta">16.5% above target</span>
+          <div className="result-label"><span className="result-icon"><Icon name="check" /></span>Final clean regression</div>
+          <div className="result-value">6.43k <small>logs/sec</small></div>
+          <p>194,964 accepted logs, zero HTTP errors, and 100% read-after-write success.</p>
+          <span className="target-delta">Target not yet met</span>
         </article>
         <article className="result-card best-result">
-          <div className="result-label"><span className="result-icon"><Icon name="performance" /></span>Best observed result</div>
-          <div className="result-value">21.3k <small>logs/sec</small></div>
-          <p>21,335.13 logs/sec at benchmark client concurrency 32.</p>
-          <span className="target-delta">42% above target</span>
+          <div className="result-label"><span className="result-icon"><Icon name="performance" /></span>Primary aggregation p95</div>
+          <div className="result-value">205 <small>ms</small></div>
+          <p>Down from the official 870.9 ms load result through exact minute rollups.</p>
+          <span className="target-delta">Below 400 ms query threshold</span>
         </article>
         <aside className="distinction-note">
           <Icon name="alert" />
-          <div><strong>Measured, not marketed</strong><p>The clean repeatable measurement is presented separately from the highest single observed run.</p></div>
+          <div><strong>Measured, not marketed</strong><p>These are short regression runs. The README clearly separates them from the full official benchmark.</p></div>
         </aside>
       </section>
 
@@ -64,19 +61,19 @@ export function Performance() {
         </section>
 
         <section className="panel concurrency-panel">
-          <div className="panel-heading"><div><span className="section-kicker">Saturation test</span><h2>Client concurrency experiment</h2></div></div>
-          <div className="concurrency-callout"><span>32</span><div><strong>Benchmark client concurrency</strong><p>Concurrent ingestion clients—not server threads or processors.</p></div></div>
+          <div className="panel-heading"><div><span className="section-kicker">Dataset growth</span><h2>Consecutive exact-workload runs</h2></div></div>
+          <div className="concurrency-callout"><span>33</span><div><strong>Logs per HTTP batch</strong><p>The shared generator caps ingestion at 70 virtual users.</p></div></div>
           <div className="concurrency-chart">
-            {concurrency.map((result) => (
-              <div className={`concurrency-row ${result.clients === 32 ? "selected" : ""}`} key={result.clients}>
-                <span className="concurrency-label">{result.clients}</span>
-                <div className="concurrency-track"><div style={{ width: `${(result.throughput / maxConcurrency) * 100}%` }} /></div>
+            {datasetRuns.map((result) => (
+              <div className="concurrency-row selected" key={result.logs}>
+                <span className="concurrency-label">{Math.round(result.logs / 1000)}k</span>
+                <div className="concurrency-track"><div style={{ width: `${(result.throughput / maxThroughput) * 100}%` }} /></div>
                 <strong>{result.throughput.toFixed(2)}k</strong>
-                {result.clients === 32 && <span className="best-badge">Best</span>}
+                <span className="best-badge">Stable</span>
               </div>
             ))}
           </div>
-          <p className="chart-footnote">Throughput peaked at 32 clients; increasing to 64 reduced useful throughput to 19.06k logs/sec.</p>
+          <p className="chart-footnote">Throughput remained stable as the indexed dataset grew from 195k to 392k rows.</p>
         </section>
       </div>
 
@@ -85,7 +82,7 @@ export function Performance() {
         <div className="resource-grid">
           <article className="resource-card"><span className="resource-icon"><Icon name="server" /></span><div><span>Application</span><strong>0.5 CPU</strong><strong>256 MB</strong></div></article>
           <article className="resource-card postgres-resource"><span className="resource-icon"><Icon name="database" /></span><div><span>PostgreSQL 16</span><strong>1 CPU</strong><strong>1 GB</strong></div></article>
-          <article className="resource-detail"><Icon name="cpu" /><div><strong>Performance context</strong><p>Binary COPY, a bounded queue, micro-batching, and 100-log HTTP batches. <code>fsync</code>, <code>synchronous_commit</code>, and <code>full_page_writes</code> remained on.</p></div></article>
+          <article className="resource-detail"><Icon name="cpu" /><div><strong>Performance context</strong><p>Text COPY, two bounded writer lanes, 33-log HTTP batches, and transactional minute rollups. <code>fsync</code>, <code>synchronous_commit</code>, and <code>full_page_writes</code> remained on.</p></div></article>
         </div>
       </section>
     </>

@@ -87,8 +87,6 @@ import type {
       };
     }
   
-    const attributes: LogAttributes = {};
-  
     for (const [key, attributeValue] of Object.entries(
       value,
     )) {
@@ -107,21 +105,12 @@ import type {
         };
       }
   
-      Object.defineProperty(
-        attributes,
-        key,
-        {
-          value: attributeValue,
-          enumerable: true,
-          writable: true,
-          configurable: true,
-        },
-      );
     }
   
     return {
       ok: true,
-      value: attributes,
+      value:
+        value as LogAttributes,
     };
   }
   
@@ -192,6 +181,8 @@ import type {
       ok: true,
       value: {
         timestamp: timestampResult.value.value,
+        epochMilliseconds:
+          timestampResult.value.epochMilliseconds,
         level: input.level,
         service: input.service,
         message: input.message,

@@ -11,8 +11,8 @@ import type {
 } from "pg";
 
 import {
-  BinaryCopyLogWriter,
-} from "../ingestion/binary-copy-writer.js";
+  TextCopyLogWriter,
+} from "../ingestion/text-copy-writer.js";
 
 import {
   LogIngestionQueue,
@@ -43,7 +43,12 @@ export function buildServer(
 ): FastifyInstance {
   const server =
     Fastify({
-      logger,
+      logger:
+        logger
+          ? {
+              level: "warn",
+            }
+          : false,
       return503OnClosing:
         true,
     });
@@ -57,7 +62,7 @@ export function buildServer(
   const effectiveIngestionQueue =
     ingestionQueue ??
     new LogIngestionQueue(
-      new BinaryCopyLogWriter(
+      new TextCopyLogWriter(
         pool,
       ),
       {

@@ -103,6 +103,10 @@ describe(
 
                 expect(query.values).not
                     .toContain("service");
+
+                expect(query.text).toContain(
+                    "FROM log_minute_rollups AS rollup",
+                );
             },
         );
 
@@ -132,6 +136,26 @@ describe(
 
                 expect(query.text).toContain(
                     "NULL::text AS group_value",
+                );
+            },
+        );
+
+        test(
+            "falls back to raw logs when message filtering needs raw dimensions",
+            () => {
+                const query =
+                    buildLogAggregateQuery(
+                        createFilters({
+                            q: "declined",
+                        }),
+                    );
+
+                expect(query.text).toContain(
+                    "FROM logs",
+                );
+
+                expect(query.text).not.toContain(
+                    "log_minute_rollups",
                 );
             },
         );

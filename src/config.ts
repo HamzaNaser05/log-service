@@ -18,6 +18,8 @@ export type AppConfig = {
   ingestionRetryAfterSeconds: number;
 
   ingestionMicrobatchFlushLogs: number;
+
+  ingestionWriterCount: number;
 };
 
 function requireEnv(
@@ -186,6 +188,18 @@ export function loadConfig(): AppConfig {
 
         1,
         100_000,
+      ),
+
+    ingestionWriterCount:
+      parseIntegerInRange(
+        "INGESTION_WRITER_COUNT",
+
+        requireEnv(
+          "INGESTION_WRITER_COUNT",
+        ),
+
+        1,
+        4,
       ),
   };
 }

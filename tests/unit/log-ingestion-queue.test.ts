@@ -144,6 +144,54 @@ import {
       this.release();
     }
   }
+
+
+  class ConcurrentControlledWriter
+  implements LogBatchWriter {
+    public activeWrites = 0;
+
+    public maximumActiveWrites = 0;
+
+    private readonly releases:
+      Array<() => void> = [];
+
+    public async start():
+      Promise<void> {}
+
+    public async write(
+      _logs:
+        readonly ValidatedLogEntry[],
+    ): Promise<void> {
+      this.activeWrites += 1;
+
+      this.maximumActiveWrites =
+        Math.max(
+          this.maximumActiveWrites,
+          this.activeWrites,
+        );
+
+      await new Promise<void>(
+        (resolve) => {
+          this.releases.push(resolve);
+        },
+      );
+
+      this.activeWrites -= 1;
+    }
+
+    public releaseAll(): void {
+      for (const release of this.releases) {
+        release();
+      }
+
+      this.releases.length = 0;
+    }
+
+    public async close():
+      Promise<void> {
+      this.releaseAll();
+    }
+  }
   
   
   describe(
@@ -382,6 +430,79 @@ import {
           expect(
             queue.bufferedLogCount,
           ).toBe(0);
+        },
+      );
+
+
+      test(
+        "runs no more than the configured number of flushes concurrently",
+        async () => {
+          const writer =
+            new ConcurrentControlledWriter();
+
+          const queue =
+            new LogIngestionQueue(
+              writer,
+              {
+                maxBufferedLogs: 10,
+                maxMicrobatchLogs: 1,
+                flushThresholdLogs: 1,
+                maxWaitMilliseconds: 1000,
+                retryAfterSeconds: 1,
+                maxConcurrentFlushes: 2,
+              },
+            );
+
+          await queue.start();
+
+          const first =
+            queue.enqueue([
+              createLog(1),
+            ]);
+          const second =
+            queue.enqueue([
+              createLog(2),
+            ]);
+          const third =
+            queue.enqueue([
+              createLog(3),
+            ]);
+
+          if (
+            !first.ok ||
+            !second.ok ||
+            !third.ok
+          ) {
+            throw new Error(
+              "Expected requests to enter queue",
+            );
+          }
+
+          expect(
+            writer.maximumActiveWrites,
+          ).toBe(2);
+
+          writer.releaseAll();
+
+          await Promise.all([
+            first.completion,
+            second.completion,
+          ]);
+
+          await new Promise<void>(
+            (resolve) => {
+              setImmediate(resolve);
+            },
+          );
+
+          expect(
+            writer.maximumActiveWrites,
+          ).toBe(2);
+
+          writer.releaseAll();
+
+          await third.completion;
+          await queue.close();
         },
       );
     },

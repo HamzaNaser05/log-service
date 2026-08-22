@@ -66,7 +66,7 @@ import type {
   
   beforeEach(async () => {
     await getResources().pool.query(
-      "TRUNCATE TABLE logs RESTART IDENTITY",
+      "TRUNCATE TABLE logs, log_minute_rollups RESTART IDENTITY",
     );
   });
   
@@ -423,6 +423,102 @@ import type {
             response.json(),
           ).toEqual({
             buckets: [],
+          });
+        },
+      );
+
+      test(
+        "combines rollups with exact partial-minute boundaries",
+        async () => {
+          const {
+            pool,
+            server,
+          } = getResources();
+
+          await insertLogs(
+            pool,
+            [
+              {
+                timestamp:
+                  "2026-08-09T09:00:10Z",
+                level: "info",
+                service: "edge-test",
+                message: "excluded before since",
+                attributes: {},
+              },
+              {
+                timestamp:
+                  "2026-08-09T09:00:30Z",
+                level: "info",
+                service: "edge-test",
+                message: "included first edge",
+                attributes: {},
+              },
+              {
+                timestamp:
+                  "2026-08-09T09:01:10Z",
+                level: "info",
+                service: "edge-test",
+                message: "included rollup",
+                attributes: {},
+              },
+              {
+                timestamp:
+                  "2026-08-09T09:02:10Z",
+                level: "info",
+                service: "edge-test",
+                message: "included last edge",
+                attributes: {},
+              },
+              {
+                timestamp:
+                  "2026-08-09T09:02:30Z",
+                level: "info",
+                service: "edge-test",
+                message: "excluded after until",
+                attributes: {},
+              },
+            ],
+          );
+
+          const response =
+            await server.inject({
+              method: "GET",
+              url:
+                "/logs/aggregate" +
+                "?since=2026-08-09T09%3A00%3A20Z" +
+                "&until=2026-08-09T09%3A02%3A20Z" +
+                "&bucket=1m" +
+                "&service=edge-test",
+            });
+
+          expect(
+            response.statusCode,
+          ).toBe(200);
+
+          expect(
+            response.json(),
+          ).toEqual({
+            buckets: [
+              {
+                start:
+                  "2026-08-09T09:00:00Z",
+                group: null,
+                count: 1,
+              },
+              {
+                start:
+                  "2026-08-09T09:01:00Z",
+                group: null,
+                count: 1,
+              },
+              {
+                start:
+                  "2026-08-09T09:02:00Z",
+                group: null,
+                count: 1,
+              },
+            ],
           });
         },
       );

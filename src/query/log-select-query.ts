@@ -100,7 +100,7 @@ import type {
     }
   
     lines.push(
-      "ORDER BY logs.timestamp DESC, logs.id DESC",      
+      "ORDER BY logs.timestamp DESC, logs.id DESC",
         `LIMIT ${limitParameter}`,
     );
   

@@ -8,23 +8,17 @@ import type {
   export function normalizeLogAttributes(
     attributes: LogAttributes,
   ): NormalizedLogAttributes {
-    const normalized:
-      NormalizedLogAttributes = {};
+    const normalized =
+      Object.create(
+        null,
+      ) as NormalizedLogAttributes;
   
     for (
       const [key, value]
       of Object.entries(attributes)
     ) {
-      Object.defineProperty(
-        normalized,
-        key,
-        {
-          value: String(value),
-          enumerable: true,
-          writable: true,
-          configurable: true,
-        },
-      );
+      normalized[key] =
+        String(value);
     }
   
     return normalized;

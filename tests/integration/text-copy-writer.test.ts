@@ -12,8 +12,8 @@ import {
 } from "vitest";
 
 import {
-  BinaryCopyLogWriter,
-} from "../../src/ingestion/binary-copy-writer.js";
+  TextCopyLogWriter,
+} from "../../src/ingestion/text-copy-writer.js";
 
 import {
   createTestDatabase,
@@ -24,7 +24,7 @@ let pool:
   Pool | undefined;
 
 let writer:
-  BinaryCopyLogWriter | undefined;
+  TextCopyLogWriter | undefined;
 
 function getPool():
   Pool {
@@ -38,7 +38,7 @@ function getPool():
 }
 
 function getWriter():
-  BinaryCopyLogWriter {
+  TextCopyLogWriter {
   if (writer === undefined) {
     throw new Error(
       "Writer is not initialized",
@@ -54,7 +54,7 @@ beforeAll(
       await createTestDatabase();
 
     writer =
-      new BinaryCopyLogWriter(
+      new TextCopyLogWriter(
         pool,
       );
 
@@ -65,7 +65,7 @@ beforeAll(
 beforeEach(
   async () => {
     await getPool().query(
-      "TRUNCATE TABLE logs RESTART IDENTITY",
+      "TRUNCATE TABLE logs, log_minute_rollups RESTART IDENTITY",
     );
   },
 );
@@ -92,7 +92,7 @@ afterAll(
 );
 
 describe(
-  "BinaryCopyLogWriter",
+  "TextCopyLogWriter",
   () => {
     test(
       "preserves timestamp precision, Unicode, and JSON attribute types",
@@ -107,7 +107,7 @@ describe(
                 "error",
 
               service:
-                "binary-copy-test",
+                "text-copy-test",
 
               message:
                 "مرحبا 🔥 payment declined",
@@ -182,7 +182,7 @@ describe(
             "error",
 
           service:
-            "binary-copy-test",
+            "text-copy-test",
 
           message:
             "مرحبا 🔥 payment declined",
@@ -210,6 +210,31 @@ describe(
                 "true",
             },
         });
+
+        const rollup =
+          await getPool()
+            .query<{
+              log_count: string;
+            }>(
+              `
+                SELECT log_count::text
+                FROM log_minute_rollups
+                WHERE minute_start =
+                  '2026-08-09T12:34:00Z'
+                  ::timestamptz
+                  AND service =
+                    'text-copy-test'
+                  AND level = 'error'
+              `,
+            );
+
+        expect(
+          rollup.rows,
+        ).toEqual([
+          {
+            log_count: "1",
+          },
+        ]);
       },
     );
 
@@ -281,6 +306,23 @@ describe(
          */
         expect(
           result.rows[0]?.count,
+        ).toBe("0");
+
+        const rollupResult =
+          await getPool()
+            .query<{
+              count: string;
+            }>(
+              `
+                SELECT count(*)
+                FROM log_minute_rollups
+                WHERE service =
+                  'rollback-test'
+              `,
+            );
+
+        expect(
+          rollupResult.rows[0]?.count,
         ).toBe("0");
       },
     );

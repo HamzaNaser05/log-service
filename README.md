@@ -6,7 +6,7 @@ The system is designed to ingest structured logs at high throughput while preser
 
 ## Highlights
 
-- Binary PostgreSQL `COPY` ingestion
+- PostgreSQL text `COPY` ingestion
 - Bounded in-memory ingestion queue
 - Micro-batching
 - Dedicated PostgreSQL writer connection
@@ -58,24 +58,30 @@ The service was benchmarked under constrained resources:
 | Application | 0.5 CPU / 256 MB RAM |
 | PostgreSQL | 1 CPU / 1 GB RAM |
 
-Using:
-
-- 100,000 initial logs
-- HTTP batch size: 100
-- Binary COPY
-- Micro-batching
-- 32 concurrent ingestion clients
-- PostgreSQL durability enabled
-
-Observed results included:
+The current regression test uses the shared load generator's exact performance
+workload: batch size 33, 70 maximum ingestion VUs, 15,000 requested logs/sec,
+one aggregation/sec, and 23 read-after-write iterations/sec. A clean 30-second
+run on 2026-08-22 produced:
 
 | Metric | Result |
 |---|---:|
-| Clean ingestion throughput | ~17.5k logs/sec |
-| Best observed throughput | ~21.3k logs/sec |
-| Required target | 15k logs/sec |
-| Failed ingestion batches | 0 |
-| Aggregation p95 during ingestion | < 1 second |
+| Accepted logs | 194,964 |
+| Accepted throughput | 6,433 logs/sec |
+| Ingestion p95 | 479.60 ms |
+| Aggregation p95 | 205.11 ms |
+| Read-after-write success | 100% |
+| HTTP errors | 0 |
+
+A second 30-second run without truncating first grew the dataset to 391,864
+logs (196 MB including indexes) and sustained 6,414 logs/sec. Aggregation p95
+was 305.53 ms. A live resource snapshot during that run showed 36.18% CPU and
+40.98 MiB for the application, and 79.62% CPU and 250.6 MiB for PostgreSQL.
+
+The official baseline submission accepted 4,540.8 logs/sec in its 120-second
+load scenario and had an aggregation p95 of 870.9 ms. The new short regression
+runs show a material improvement and restore query-score headroom, but they do
+not yet meet the 15,000 logs/sec target and are not presented as a replacement
+for a full four-scenario grading run.
 
 PostgreSQL durability remained enabled during testing:
 
@@ -87,7 +93,11 @@ full_page_writes = on
 
 The performance work was measurement-driven rather than based on disabling durability guarantees.
 
-Detailed benchmark methodology and results are documented separately in the performance milestone.
+The bottlenecks found were raw-table aggregation, one serial COPY lane,
+per-request info logging, and application-heavy binary payload construction.
+The applied changes are transactional minute rollups, two COPY lanes, warn-level
+production logging, a 50 ms microbatch window, and a measured switch to text
+COPY. Detailed methodology and limitations are in `docs/PERFORMANCE.md`.
 
 ---
 
@@ -116,10 +126,10 @@ Detailed benchmark methodology and results are documented separately in the perf
                               Micro-batching
                                     │
                                     ▼
-                         Dedicated COPY Writer
+                           Two COPY Writers
                                     │
                                     ▼
-                      PostgreSQL Binary COPY
+                       PostgreSQL Text COPY
                                     │
                                     ▼
                        ┌─────────────────────┐
@@ -128,19 +138,21 @@ Detailed benchmark methodology and results are documented separately in the perf
                        │ Daily partitions    │
                        │ JSONB attributes    │
                        │ B-tree indexes      │
-                       │ GIN index           │
+                       │ GIN indexes         │
+                       │ Minute rollups      │
                        └──────────┬──────────┘
                                   │
                     ┌─────────────┴─────────────┐
                     ▼                           ▼
                GET /logs             GET /logs/aggregate
                     │                           │
-             Keyset pagination              date_bin()
+             Keyset pagination          minute rollups +
+                                        exact edge scan
 ```
 
 ---
 
-# Why Binary COPY?
+# Why COPY and two writer lanes?
 
 The initial implementation used parameterized per-row `INSERT` statements inside a transaction.
 
@@ -155,7 +167,7 @@ bounded queue
      ↓
 microbatch
      ↓
-single dedicated writer
+two leased writer connections
      ↓
 PostgreSQL COPY FROM STDIN
      ↓
@@ -163,6 +175,11 @@ one transaction
 ```
 
 Multiple HTTP batches can therefore share one database COPY operation.
+
+Two independent lanes overlap PostgreSQL work without allowing concurrent use
+of one database connection. Minute-rollup rows include a writer shard in their
+primary key, so both transactions can update counts without contending on the
+same row. Aggregation sums those shards transparently.
 
 An HTTP request is not acknowledged as successful until its microbatch has committed successfully.
 
@@ -201,6 +218,10 @@ logs_2026_08_16
 Partitions are created automatically ahead of time.
 
 Retention removes fully expired partitions efficiently and performs a bounded delete only inside the cutoff-day partition when necessary.
+
+The small minute-rollup table is retained in the same maintenance transaction.
+The cutoff minute is rebuilt from retained raw rows, keeping partial-minute
+retention exact.
 
 ---
 
@@ -241,6 +262,20 @@ Example:
 ```
 
 A GIN index supports arbitrary attribute equality filters.
+
+Message substring search uses a trigram GIN index. The primary key supports the
+deterministic `(timestamp, id)` order, while
+`(service, timestamp DESC, id DESC)` supports the most common filtered query and
+the load generator's read-after-write check.
+
+## Aggregation rollups
+
+`log_minute_rollups` stores counts by minute, service, level, and writer shard.
+Ingestion updates it in the same transaction as raw logs. Aggregations without
+`q` or attribute filters read the compact rollup table; the first and last
+partial minutes are read from raw logs so arbitrary `since` and `until`
+boundaries remain exact. Queries using message or attribute filters fall back
+to indexed raw logs because those dimensions are not present in the rollup.
 
 ---
 
@@ -343,12 +378,6 @@ Docker Compose
 
 Clone the repository and enter the project directory.
 
-Create the local environment file:
-
-```bash
-cp .env.example .env
-```
-
 Start the system:
 
 ```bash
@@ -375,9 +404,51 @@ Expected response:
 }
 ```
 
+No environment file, authentication header, rate-limit setup, database
+creation, or manual migration command is required. Plain `docker compose up`
+provides the four required endpoints on `localhost:8080`.
+
+## Configuration
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `RETENTION_DAYS` | `7` | Raw-log and rollup retention window |
+| `PARTITION_AHEAD_DAYS` | `2` | UTC partitions created ahead |
+| `INGESTION_QUEUE_MAX_LOGS` | `25000` | Bounded queued + in-flight logs |
+| `INGESTION_MICROBATCH_MAX_LOGS` | `5000` | Maximum logs in one COPY |
+| `INGESTION_MICROBATCH_MAX_WAIT_MS` | `50` | Maximum batching delay |
+| `INGESTION_MICROBATCH_FLUSH_LOGS` | `2000` | Immediate-flush threshold |
+| `INGESTION_WRITER_COUNT` | `2` | Parallel durable COPY lanes (`1`–`4`) |
+| `INGESTION_RETRY_AFTER_SECONDS` | `1` | Backpressure retry hint |
+| `CORS_ORIGIN` | `http://localhost:3000` | Comma-separated allowed dashboard origins |
+
+## Optional features
+
+The operations dashboard is additive and enabled by the Compose `frontend`
+service on `localhost:3000`. It does not alter the required API. Authentication,
+API keys, multi-tenancy, quotas, and rate limiting are not implemented, so the
+default service is unauthenticated and imposes no grader-facing quota.
+
+## Known limitations
+
+- The exact shared-generator regression remains below the 15k logs/sec target.
+- Minute rollups accelerate service/level aggregations; `q` and attribute
+  aggregations still scan indexed raw logs.
+- Daily partitions make retention efficient, but the cutoff-day partial delete
+  can create some bloat until PostgreSQL vacuums that partition.
+- Writer concurrency above two did not improve the constrained benchmark and
+  can reduce query connection headroom.
+
 ---
 
 # Local Development
+
+Create the development configuration. Unlike Docker Compose, `npm start` runs
+on the host and therefore uses `localhost` for PostgreSQL:
+
+```bash
+cp .env.example .env
+```
 
 Install dependencies:
 
@@ -474,7 +545,7 @@ The implementation and test suite cover:
 - grouping
 - partition creation
 - retention boundaries
-- Binary COPY rollback
+- text COPY rollback
 - writer recovery after rollback
 - database failures
 - ingestion backpressure

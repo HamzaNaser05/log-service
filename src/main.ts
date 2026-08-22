@@ -15,12 +15,16 @@ import {
 } from "./http/server.js";
 
 import {
-  BinaryCopyLogWriter,
-} from "./ingestion/binary-copy-writer.js";
+  TextCopyLogWriter,
+} from "./ingestion/text-copy-writer.js";
 
 import {
   LogIngestionQueue,
 } from "./ingestion/log-ingestion-queue.js";
+
+import {
+  ParallelLogWriter,
+} from "./ingestion/parallel-log-writer.js";
 
 import {
   createGracefulShutdown,
@@ -84,25 +88,33 @@ async function main(): Promise<void> {
 
     /*
      * 3. Create the dedicated
-     * PostgreSQL Binary COPY writer.
+     * PostgreSQL COPY writers.
      *
-     * The writer takes one client
+     * Each writer reserves one client
      * from the PostgreSQL pool and
      * keeps it dedicated to ingestion.
      */
-    const ingestionWriter =
-      new BinaryCopyLogWriter(
-        pool,
-      );
-
     /*
      * 4. Create the bounded
      * micro-batching queue.
      */
     ingestionQueue =
       new LogIngestionQueue(
-        new BinaryCopyLogWriter(
-          pool,
+        new ParallelLogWriter(
+          Array.from(
+            {
+              length:
+                config.ingestionWriterCount,
+            },
+            (
+              _unused,
+              writerShard,
+            ) =>
+              new TextCopyLogWriter(
+                pool,
+                writerShard,
+              ),
+          ),
         ),
         {
           maxBufferedLogs:
@@ -124,6 +136,10 @@ async function main(): Promise<void> {
           retryAfterSeconds:
             config
               .ingestionRetryAfterSeconds,
+
+          maxConcurrentFlushes:
+            config
+              .ingestionWriterCount,
         },
       );
 
